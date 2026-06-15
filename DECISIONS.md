@@ -49,3 +49,16 @@ Append-only design-decision log. Each entry: the choice, the *why*, and (where i
 **Decision.** `gate_a2.classify(..., ceiling=None)` runs only the sign test in Phase 1 (G2 → "not-inconsistent"; scaling-breaker → "inconsistent"). The `n=0.99` recovery cell is characterized (coverage, CI width, profile↔bootstrap agreement) and handed to S0.2 rather than gated.
 
 **Why.** The consistent/inconclusive trichotomy needs the Gate-A.2 informativeness ceiling, which is an S0.2 deliverable that does not exist at Phase 1; importing it would break the firewall and the result-blind discipline. The sign test is the N-robust, calibration-independent part — exactly the property claimed for the Gate-0(a) harness. The near-critical floor is S0.2's actual object of study, so Phase 1 must not pre-empt it.
+
+---
+
+### 2026-06-15 — Pre-plan verification: `1/σνz` fit floor at duration `x_min`; brentq profile CI; critical cell needs adequate avalanche count
+
+**Decision.** Before writing the implementation plan, the riskiest algorithms were measured in-environment (verify→fix). Three operationalizations were fixed as a result:
+1. **`1/σνz` is the `log⟨S|T⟩`-vs-`log T` slope fit with its lower range floored at the CSN-selected *duration* `x_min`** (not `T=1`), excluding censored avalanches.
+2. **The profile-likelihood CI for `n` uses `brentq` root-finding**, not a grid scan.
+3. **The Gate-0(a) A.2 cells run at `≈5×10⁴` avalanches** with `size_cap=10**6`.
+
+**Why (measured, not assumed).** The exponential-kernel Ogata-recursion MLE recovers planted `n` essentially exactly (`n̂ = 0.286/0.577/0.900` for `n = 0.3/0.6/0.9`), and the `powerlaw` package API was confirmed. But the crackling-relation discrepancy `Δ` for a *genuinely critical* generator came out `≈0.55` (joint-bootstrap CI **excluding 0** — a false negative) with a naive `T=1` slope floor at `≈8×10³` avalanches. The cause is small-`T` curvature in `⟨S|T⟩` plus finite-sample exponent bias, **not** the size cap (slope unchanged at cap `10⁶`). Flooring the slope fit at the duration `x_min` and raising the count to `≈5×10⁴` gives `τ≈1.50, α≈1.95, 1/σνz≈1.84 → Δ≈0.06` (CI contains 0). Separately, a 200-point pure-Python profile scan was untenable (≈40k sequential recursion passes); brentq needs ≈30 profile evaluations.
+
+**Effect.** Updated the S0.1 spec §§3, 4.1, 4.2, 4.4, 5. The instrument as *originally* specified (naive `1/σνz`, unstated count) would have failed Gate-0(a) on its own critical generator — caught here, before any plan or compute, which is the entire point of the S0.1 slice. The fit-floor rule is result-blind (duration `x_min` is KS-selected on the marginal, never inspects `Δ`/`n`). Flagged to the owner for cross-review as a Gate-A.2 operationalization that the frozen pre-registration's §5.3/§6 should reflect.
