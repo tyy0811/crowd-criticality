@@ -208,10 +208,10 @@ Reading: `|Δ| ≤ k·Δ_min` (`k = [fill, e.g. 2]`) → **not grossly violated*
 
 | Stage | Rule | If pass | If fail |
 |---|---|---|---|
-| 0 | (a) scaling-relation check distinguishes a critical generator from a non-critical power-law generator; (b) feasibility spike resolves source A/B/C and sets validity-gate + floor + precision thresholds + the H1c equivalence margin `delta` + the Gate-A.2 informativeness ceiling | Proceed to Stage 1 | Fix toolkit / resolve data source; do not proceed |
+| 0 | (a) scaling-relation check distinguishes a critical generator from a *grossly* non-critical power-law generator (coarse A.2; fine near-critical discrimination is not claimed); (b) feasibility spike resolves source A/B/C and sets validity-gate + floor + precision thresholds + the H1c equivalence margin `delta` + the Gate-A.2 resolution `Δ_min(N)` calibration | Proceed to Stage 1 | Fix toolkit / resolve data source; do not proceed |
 | 1 | Data-validity gate (§4a) passes | Run Hawkes | **Ship the reconstruction/validity report** (expected outcome); Hawkes → early PhD |
 | 1 | Baseline-corrected `n` band | `[0.9,1.0)` → near-critical market stands (H2) | `[0.7,0.9)` → reframe as strong endogeneity; `<0.7` → abandon near-critical framing |
-| 2 | Scaling relation consistent (revised Gate A.2) at the critical point **and** `n` crosses 1 smoothly over the sweep **and** the §4f artifact gate resolves in reading 1, or in reading 2 with the parrot null and Gate A.2 both rejecting the artifact | Proceed to Stage 3 | Downshift to "dynamical class of LLM crowds" methods paper; if reading 3 (parrot null survives), reframe as a pipeline/model-statistics characterization |
+| 2 | Scaling relation not grossly violated (coarse Gate A.2; corroborative, `Δ_min` reported) at the critical point **and** `n` crosses 1 smoothly over the sweep **and** the §4f artifact gate resolves in reading 1, or in reading 2 with the parrot null and Gate A.2 both rejecting the artifact | Proceed to Stage 3 | Downshift to "dynamical class of LLM crowds" methods paper; if reading 3 (parrot null survives), reframe as a pipeline/model-statistics characterization |
 | 3 | H1a (distinguishable interior min) **and** H1b (`n_min ∈ [0.9,1.0)`) **and** peaked model beats alternatives by the pre-set margin | Confirm headline (report H1c equivalence and the Murphy signature separately) | If CIs too wide (Gate A.4) → inconclusive; if clean fail → **negative result** |
 
 ---
@@ -228,7 +228,7 @@ A Brier-vs-`n` curve with no interior optimum distinguishable from the endpoints
 - One primary kernel-selection rule; both kernels, both baselines, and filtered **and** unfiltered streams always reported.
 - No post-hoc market re-selection, window re-cropping, kernel cherry-picking, or estimator selection by `n`.
 - Brier sampling, weighting, and exclusions frozen before any outcome is inspected.
-- The H1c equivalence margin `delta`, the Gate-A.2 informativeness ceiling, and the Murphy bin count `K` are frozen by Stage-0, result-blind selection rules before any real-data fit.
+- The H1c equivalence margin `delta`, the Gate-A.2 resolution `Δ_min(N)` calibration and gross-violation factor `k`, and the Murphy bin count `K` are frozen by Stage-0, result-blind selection rules before any real-data fit.
 - Control-crowd readings (§4f) are pre-registered; no post-hoc reinterpretation of which crowd "counts."
 - Every change is logged in §10 with rationale and date.
 
