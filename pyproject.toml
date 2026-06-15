@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "critaudit"
+version = "0.0.1"
+description = "Branching-ratio / criticality audit toolkit"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = ["numpy>=1.24", "scipy>=1.10", "powerlaw>=1.5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+markers = ["slow: realistic-sample tests; excluded from CI fast path"]
+testpaths = ["tests"]
