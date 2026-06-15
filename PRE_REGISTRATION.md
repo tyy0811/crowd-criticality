@@ -33,7 +33,7 @@ Every `[fill]` value below is governed by a **frozen selection rule that does no
 - **H1b** — *optimum is near-critical.* The interior minimum lies in the frozen near-critical band `n ∈ [0.9, 1.0)` (see §2).
 - **H1c** (revised): *sim optimum matches the market, tested as equivalence, not as absence of difference.* Two one-sided tests (TOST) on `n_min`(sim) minus `n`(market, baseline-corrected) against equivalence margin `±delta` (selection rule in §6). A non-significant difference test alone is never reported as consistency. H1c can hold or fail independently of H2.
 - **H2** — *the market is near-critical.* Baseline-corrected Polymarket `n ∈ [0.9, 1.0)`.
-- **H3** — *the exponents are mutually consistent with criticality.* The discrepancy `Δ = (α−1)/(τ−1) − 1/σνz` is consistent with zero under the uncertainty-aware Gate A.2 (§6) at the candidate critical point.
+- **H3** (revised — coarse corroboration, not a fine test): *the scaling relation is not grossly violated.* The discrepancy `Δ = (α−1)/(τ−1) − 1/σνz` is small relative to the **measured resolution `Δ_min(N)`** at the candidate critical point (§6). Gate A.2's resolution is intrinsically coarse (Stage-0 measurement), so H3 **corroborates** the `n`-based criticality claim by confirming the scaling relation does not contradict it; it does not adjudicate near-critical gradations. The branching ratio `n` (§5.1) and Gate A.1 carry the criticality claim.
 
 **Outcomes treated as first-class results (pre-committed to publication).**
 - H1a fails (no distinguishable interior optimum) or H1b fails (optimum outside the band) → headline hypothesis falsified; negative result.
@@ -178,10 +178,11 @@ Avalanche-size exponent `τ`; duration exponent `α`; `1/σνz` measured **indep
 **Power-law fitting (CSN, Gate A.1).** For every distribution: MLE exponent with KS-selected `x_min`; goodness-of-fit p-value via parametric bootstrap; likelihood-ratio tests vs lognormal, exponential, truncated power-law.
 - **Pass:** bootstrap p-value ≥ `[fill, e.g. 0.10]` **and** LRT not favouring lognormal. Failing either ⇒ no power-law claim.
 
-**Scaling-relation check (Gate A.2, uncertainty-aware).** Compute the discrepancy `Δ = (α−1)/(τ−1) − 1/σνz` with a **joint bootstrap over avalanches**: the three exponents are estimated on the same avalanche set and are correlated, so avalanches are resampled and all three exponents re-estimated within each replicate. Three outcomes:
-- **Consistent:** the 95% CI on `Δ` contains 0 **and** the CI half-width is at or below the informativeness ceiling `[fill]`, set in Stage 0 from joint bootstraps on synthetic critical generators at matched event counts. Only this outcome supports H3.
-- **Inconsistent:** the CI excludes 0. H3 is falsified.
-- **Inconclusive:** the CI contains 0 but its half-width exceeds the ceiling. The Gate-A.4 no-interpret rule applies; H3 is neither confirmed nor falsified.
+**Scaling-relation check (Gate A.2 — coarse corroboration).** Compute `Δ = (α−1)/(τ−1) − 1/σνz` (with `1/σνz` the curvature-corrected `⟨S|T⟩` slope and `τ, α` from CSN), and the **resolution** `Δ_min(N) = 2√2·SD_seed(Δ)`, calibrated on synthetic critical generators at matched event counts.
+
+> **A.2 is a coarse corroborative check, not a fine quantitative gate — by Stage-0 measurement.** A genuinely critical generator gives `Δ → 0` with N (no bias floor — an earlier single-seed "floor" was withdrawn), but the resolution is **coarse (`Δ_min ~0.24` at 1e5 avalanches, ~0.12 at 4e5) and intrinsic** to finite-N marginal-exponent estimation: `(α−1)/(τ−1)` amplifies the `τ, α` CSN noise, and neither a different `1/σνz` estimator nor a joint `(τ,α)` fit closes the order-of-magnitude gap to fine resolution. Asserting a precision the instrument cannot deliver would itself be un-earned assertion; the coarse reading is the honest one.
+
+Reading: `|Δ| ≤ k·Δ_min` (`k = [fill, e.g. 2]`) → **not grossly violated** — corroborates the `n`-based criticality claim. `|Δ|` far exceeding `k·Δ_min` → **grossly violated** — the scaling relation contradicts criticality. The headline criticality evidence is the branching ratio `n` (§5.1) and Gate A.1; A.2 confirms the scaling relation does not contradict it and does **not** adjudicate near-critical gradations. Both `Δ` and `Δ_min(N)` are reported. (This replaces the earlier "consistent ≙ CI contains 0 within an informativeness ceiling" gate, retired by the Stage-0 discrimination probe; see the implementation plan and `DECISIONS.md`.)
 
 **Baseline-correction interpretation (Gate A.3).** If `n` is near 1 only under the constant baseline and falls substantially under the non-stationary baseline, the near-critical reading is rejected as a stationarity artifact. Report kernel/baseline identifiability sensitivity here.
 
