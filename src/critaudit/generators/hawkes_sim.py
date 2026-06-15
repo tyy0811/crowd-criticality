@@ -60,5 +60,18 @@ def _simulate_thinning(n, beta, mu, horizon, rng):
     return np.asarray(ev, dtype=float)
 
 
-def _simulate_cluster(n, beta, mu, horizon, rng):  # implemented in Task 4
-    raise NotImplementedError
+def _simulate_cluster(n, beta, mu, horizon, rng):
+    """Immigrant-cluster (Hawkes-Oakes) representation: exact for exponential
+    kernels, graceful where thinning's acceptance rate collapses near n->1."""
+    n_imm = int(rng.poisson(mu * horizon))
+    times = list(rng.uniform(0.0, horizon, size=n_imm))
+    queue = list(times)
+    while queue:
+        parent = queue.pop()
+        k = int(rng.poisson(n))  # offspring count: Poisson(kernel integral = n)
+        if k:
+            for c in parent + rng.exponential(1.0 / beta, size=k):
+                if c < horizon:
+                    times.append(float(c))
+                    queue.append(float(c))
+    return np.sort(np.asarray(times, dtype=float))
