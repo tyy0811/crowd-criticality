@@ -83,3 +83,18 @@ Append-only design-decision log. Each entry: the choice, the *why*, and (where i
 **Margin-safety (deferred, noted):** even a corrected estimator's *false-positive* safety — that it still **rejects** a small-`Δ` mismatch generator — must be certified against that generator, which lives in **S0.2**. So the estimator cannot be fully margin-certified from S0.1 alone.
 
 **Effect.** Backed the floor claim out of spec §4.4 and §5 (estimator marked OPEN; critical A.2 cell reported blocked/inconclusive). Plan Tasks 10–11 (binned-slope estimator) are not finalizable until the estimator is resolved. Nothing folded into the pre-registration. No pre-reg §10 entry (draft is unfrozen; §10 is for post-freeze deviations).
+
+---
+
+### 2026-06-15 — `1/σνz` estimator triangulation: `curv` recommended primary, `tail` robustness, shape-collapse dropped (pending cross-review)
+
+**Decision (recommendation, not yet locked).** Per the estimator-triangulation norm (plan §2.5), ran a set of `1/σνz` estimators chosen to fail differently through identical gates on Galton–Watson ground truth (evidence: `verification/s0.1_snz_estimator_triangulation.py`, writedown `results/s0.1_snz_triangulation/2026-06-15_writedown.txt`). Recommend **`curv`** (curvature-corrected bulk fit `log⟨S|T⟩ = a + γ logT + b/T`, lowest DOF) as **primary**, **`tail`** (large-`T` OLS, opposite data region) as **robustness/triangulation partner**, and **drop avalanche shape-collapse**.
+
+**Why (measured).** Selection criterion was pre-committed and result-blind: point → known `2.0` AND CI tightening; look-alike rejection; mutual agreement.
+- **Shape-collapse (highest DOF, the literature favorite) failed:** stuck at `1.650` across N (Δ growing 0.17→0.30, no convergence) and **structurally unable to reject** the S–T-shuffle look-alike (it reads the profile, not `S`). Verifying it alone would have locked the weakest estimator — the same single-favorite error the binned floor was.
+- **`curv` (lowest DOF) passed:** estimate rises `1.79→1.87` toward 2, Δ-CI contains 0 at all N with half-width tightening `0.22→0.13`, rejects the look-alike (Δ≈3.1). Adding one curvature term lifts the binned estimate `1.71→1.88`, **confirming** the binned failure was unmodeled small-`T` curvature.
+- **`tail` agrees** with `curv` to 0.002 at 100k (1.867 vs 1.869) from the opposite data region → real triangulation; rejects the look-alike.
+
+**Caveat (load-bearing).** Even the best estimators plateau near `1.87`, not `2.0`: the Δ *point* sits at `≈0.09`, flat across N, masked by CI width. A genuinely critical generator gives Δ≈0.09, not 0. This constrains **S0.2**: the Gate-A.2 informativeness ceiling cannot be set below ~0.09 without making a true critical generator read "inconclusive." Chasing the residual to 0 by adding correction terms is the DOF-tuning trap and is refused.
+
+**Sequencing.** This comparison is the **input to the Claude/ChatGPT cross-review** (owner-run); the estimator is **not** locked into spec §4.4, plan Tasks 10–11, or the pre-reg until cross-review confirms. Small-Δ margin-safety certification is an S0.2 deliverable.

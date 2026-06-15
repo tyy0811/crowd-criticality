@@ -1,0 +1,54 @@
+=== S0.1 1/σνz estimator triangulation — writedown (2026-06-15) ===
+Source: verification/s0.1_snz_estimator_triangulation.py  (seeds: point pass 7, bootstrap 13)
+Purpose: select the 1/σνz estimator for Gate A.2 by the result-blind criterion
+  (point → known 2.0 AND CI tightening; look-alike rejection; mutual agreement).
+  Ground truth: Poisson(1) Galton–Watson critical avalanches (mean-field 1/σνz = 2).
+
+--- CRITICAL generator: 1/σνz point estimates vs N (target 2.0) ---
+      N   ratio | collapse   tail   curv  binned(naive)
+  20000   1.821 |   1.650   1.871  1.802  1.570
+  50000   1.905 |   1.650   1.868  1.855  1.654
+ 100000   1.952 |   1.650   1.870  1.878  1.706
+  ratio = (alpha-1)/(tau-1) from the two CSN marginal fits; → ~1.95 at 100k.
+
+--- honest joint bootstrap (reselect x_min per replicate), B=50 ---
+  N= 20000: curv 1/σνz=1.788 Δ=+0.088 CI=(-0.063,+0.381) hw=0.222 contains0=True | tail 1/σνz=1.870 Δ=+0.006 CI=(-0.154,+0.309) hw=0.231 contains0=True
+  N= 50000: curv 1/σνz=1.826 Δ=+0.084 CI=(-0.076,+0.277) hw=0.176 contains0=True | tail 1/σνz=1.860 Δ=+0.049 CI=(-0.095,+0.251) hw=0.173 contains0=True
+  N=100000: curv 1/σνz=1.869 Δ=+0.096 CI=(-0.022,+0.234) hw=0.128 contains0=True | tail 1/σνz=1.867 Δ=+0.099 CI=(-0.015,+0.241) hw=0.128 contains0=True
+
+--- LOOK-ALIKE (full shuffle, breaks S–T pairing), N=50000 ---
+  curv Δ=+3.119 CI=(+2.521,+3.760) excludes0=True
+  tail Δ=+1.968 CI=(+1.825,+2.214) excludes0=True
+  collapse Δ≈+0.30 (UNCHANGED from critical) — shape-collapse reads the profile, not S,
+    so the S–T shuffle is invisible to it: it cannot discriminate this look-alike.
+
+=== FINDINGS ===
+1. Shape-collapse (literature favorite, HIGHEST DOF) is the WORST: stuck at 1.650
+   across N (Δ growing 0.17→0.30, no convergence) AND fails to reject the look-alike
+   (structurally blind to S). Pedigree did not survive measurement. DROP as primary.
+2. curv (curvature-corrected bulk, LOWEST DOF = one 1/T term) is best: estimate rises
+   1.79→1.87 toward 2, Δ-CI contains 0 at all N with tightening half-width
+   (0.22→0.13), rejects the look-alike (Δ≈3.1). Also CONFIRMS the prior finding —
+   one curvature term lifts the binned estimate 1.71→1.88, so the binned failure was
+   unmodeled small-T curvature, nothing deeper.
+3. tail (large-T extreme, OPPOSITE data region) independently AGREES at ~1.87
+   (1.867 vs curv 1.869 at 100k — agree to 0.002) and rejects the look-alike. Real
+   triangulation: two different-region anchors converge; the outlier is the fancy one.
+
+=== CAVEAT (the load-bearing finding) ===
+Even the best estimators plateau near 1.87, NOT 2.0: the Δ POINT sits at ~0.09, flat
+across N, not clearly vanishing. The Δ-CI contains 0 partly because its half-width
+(~0.13 at 100k) still exceeds that residual bias. So a GENUINELY CRITICAL generator
+gives Δ ≈ 0.09, not 0, at achievable N. Implications for S0.2 / the pre-reg's Gate A.2:
+  - "consistent = CI contains 0" passes here only because the floor keeps the CI wide;
+    the true critical reference is Δ≈0.09. Tension to resolve in S0.2: the informativeness
+    ceiling wants the CI NARROW, but narrowing below ~0.09 makes a true critical
+    generator read "inconclusive," never "consistent." The residual bias sets a hard
+    floor on resolvable Δ.
+  - Do NOT chase the residual to 0 by adding correction terms — that is the
+    floor-tuning trap (DOF tuned to the target) one level over. Lock low-DOF, characterize.
+
+=== RECOMMENDATION (for cross-review; NOT yet locked) ===
+Primary: curv (lowest DOF that passes). Robustness/triangulation: tail. Drop: collapse.
+Margin-safety against a SMALL-Δ mismatch generator is deferred to S0.2 (per owner).
+Next: take this comparison to the Claude/ChatGPT cross-review as input, then lock.
