@@ -1,0 +1,58 @@
+=== S0.1 Gate-A.2 — adversarial round + owner re-verification (2026-06-15) ===
+A 5-blind-reviewer adversarial cross-review round was run on the cross-review brief.
+Several charges were that the brief's findings were implementation artifacts. The owner
+independently re-derived the two most damaging ones (verification/s0.1_snz_redo_diagnostics.py).
+
+--- CHECK A: correction-form sensitivity + multi-seed (6 seeds) ---
+N=100000: ratio=(alpha-1)/(tau-1) = 1.903 +/- 0.071
+  naive   : gamma=1.703  Delta=+0.199  AIC=-258.5
+  1/T     : gamma=1.874  Delta=+0.029  AIC=-375.8
+  1/sqrtT : gamma=2.071  Delta=-0.169  AIC=-392.2   <- AIC best
+  1/T2    : gamma=1.787  Delta=+0.116  AIC=-335.9
+  logT/T  : gamma=1.598  Delta=+0.305  AIC=-297.1
+N=200000: ratio=1.913+/-0.046; 1/T Delta=+0.018; 1/sqrtT Delta=-0.157 (AIC best)
+
+--- CHECK B: profile-based 1/snz estimators on GW (true = 2.0) ---
+      N  relcv(shipped)  msd(standard)  peak   area
+  50000      1.650          1.800       1.890  1.774
+ 100000      1.650          1.825       1.901  1.799
+
+=== VERIFIED CONCLUSIONS (these OVERTURN parts of the brief) ===
+1. The "Delta ~0.09 bias floor" is NOT robust. With 6 seeds, curv's Delta = +0.029 (100k),
+   +0.018 (200k) -- consistent with 0 and not growing. The earlier 0.09-0.13 came from
+   single high-ratio seeds (13, 21). FINDING 3's premise (an irreducible floor forcing
+   abandonment of the Delta=0 null) does not survive proper statistics. The reference-null
+   was a fix for a problem that mostly is not there at achievable N.
+2. Correction form is a large DOF (spread 0.47 across single-term forms). AIC prefers 1/sqrtT,
+   but 1/sqrtT gives gamma=2.07 which makes the scaling relation FAIL (Delta=-0.16) because the
+   CSN marginal ratio is itself finite-size-biased to ~1.90. The relation closes via MUTUAL
+   bias consistency (1/T-curv ~ CSN-ratio ~ 1.88), so "pick the form that closes the relation"
+   is the Delta-tuning trap. The principled estimator-selection rule is UNRESOLVED.
+3. Shape-collapse (FINDING 2) was dropped on a biased objective: the shipped relative-CV
+   objective is stuck at 1.65 even on clean profiles; a standard objective gives 1.82, peak
+   1.90. The drop was unfair. (All estimators remain biased low at 100k on GW.)
+
+=== ADVERSARIAL OBJECTIONS THAT STAND (logical, not requiring re-derivation) ===
+A. Discriminating power UNTESTED: only the trivial full-shuffle look-alike (Delta~2) was run;
+   whether the gate rejects a SMALL genuine violation (the near-critical regime that matters)
+   was deferred to S0.2 while the brief wrote "verified". The headline is oversold. (4/5 reviewers)
+B. Q2 (freeze §6) must HOLD, and the contamination is wider than §6: the Delta=0-achievable
+   assumption is also in H3, §5.3, §7's Stage-2 rule, and §4f.
+C. The reference-null adds researcher DOFs (which reference, matched-N, class, band width) the
+   parameter-free Delta=0 null lacked; and the bias cancels only WITHIN universality class --
+   real markets are long-memory Hawkes, not mean-field GW, so the fix may not transfer and could
+   falsely reject a genuinely critical market. Unverified on any non-GW system.
+D. B=25/50 bootstraps flip "contains 0" verdicts ~20-35% on seed; single-seed tables; the
+   reference-gate delta-CI used an invalid element-wise subtraction (~10% too narrow); the two
+   scripts use different size caps. Statistical rigor inadequate.
+
+=== STATUS ===
+NOTHING was locked or frozen. The flawed findings live only in DECISIONS.md as the verify->fix
+trail; spec §4.4 has the estimator OPEN. So no artifact damage -- the round caught it before any
+lock, which is the point. Q1 (spec/plan estimator+null) is NOT blessable as written. Q2 holds.
+The Gate-A.2 estimator and gate-null analysis require a proper redo (multi-seed, adequate B,
+correction-form envelope, fair shape-collapse, a small-Delta discrimination cell, and a
+cross-class reference cell) before any cross-review can bless Q1.
+
+NOTE: 4 untracked verification/adv_*.py are the reviewers' own scratch probes (unvetted); the
+owner re-derived their load-bearing claims independently in s0.1_snz_redo_diagnostics.py.
