@@ -62,3 +62,24 @@ Append-only design-decision log. Each entry: the choice, the *why*, and (where i
 **Why (measured, not assumed).** The exponential-kernel Ogata-recursion MLE recovers planted `n` essentially exactly (`n̂ = 0.286/0.577/0.900` for `n = 0.3/0.6/0.9`), and the `powerlaw` package API was confirmed. But the crackling-relation discrepancy `Δ` for a *genuinely critical* generator came out `≈0.55` (joint-bootstrap CI **excluding 0** — a false negative) with a naive `T=1` slope floor at `≈8×10³` avalanches. The cause is small-`T` curvature in `⟨S|T⟩` plus finite-sample exponent bias, **not** the size cap (slope unchanged at cap `10⁶`). Flooring the slope fit at the duration `x_min` and raising the count to `≈5×10⁴` gives `τ≈1.50, α≈1.95, 1/σνz≈1.84 → Δ≈0.06` (CI contains 0). Separately, a 200-point pure-Python profile scan was untenable (≈40k sequential recursion passes); brentq needs ≈30 profile evaluations.
 
 **Effect.** Updated the S0.1 spec §§3, 4.1, 4.2, 4.4, 5. The instrument as *originally* specified (naive `1/σνz`, unstated count) would have failed Gate-0(a) on its own critical generator — caught here, before any plan or compute, which is the entire point of the S0.1 slice. The fit-floor rule is result-blind (duration `x_min` is KS-selected on the marginal, never inspects `Δ`/`n`). Flagged to the owner for cross-review as a Gate-A.2 operationalization that the frozen pre-registration's §5.3/§6 should reflect.
+
+> **SUPERSEDED in part by the next entry.** The owner's review flagged that *choosing the duration-`x_min` floor because it drove G2's Δ→0* is Δ-tuned at rule-selection time — result-blind at evaluation but not at selection. The mandated verify-then-fold anchor check then **refuted** the floor. The `brentq` CI, the censoring/`size_cap`, and the `AvalancheSet.censored` field below all stand; only the `1/σνz` fit-floor rule is withdrawn.
+
+---
+
+### 2026-06-15 — Anchor check REFUTES the duration-`x_min` floor; `1/σνz` estimator reopened (Gate-A.2 blocker)
+
+**Decision.** Withdraw the duration-`x_min` fit-floor rule. Do **not** fold it into the pre-registration. The `1/σνz` estimator is an **open S0.1 design question**; the leading replacement is the **avalanche-shape-collapse estimator** (Friedman et al. 2012), to be verify-then-locked before the scaling module, the §5 critical cell, plan Tasks 10–11, or the pre-reg are finalized.
+
+**Why (the free anchor check the owner mandated — establish the true scaling-regime onset from huge-N ground truth, with no reference to any `x_min` or to `Δ`).**
+1. **No onset exists to anchor to.** The `⟨S|T⟩` local slope climbs monotonically (1.73→1.88) with no plateau at reachable `T`; "floor at the onset" has no referent.
+2. **The CSN duration `x_min` is noise, not an onset:** 21 / 31 / 11 across N = 20k / 50k / 100k (non-monotone, unstable).
+3. **The binned-slope estimator is biased low even asymptotically** — `(α−1)/(τ−1)=1.97` vs huge-N slope `≈1.86`; the gap is comparable to the `Δ` being resolved.
+4. **The failure is point bias, not CI width** (per-replicate / honest bootstrap): naive `Δ_point=0.25`, CI `(0.14,0.46)`, halfwidth `0.16` at N=5×10⁴ → CI excludes 0 because the point is biased.
+5. **The floor is operationally brittle:** at the harness N the selected floor (`x_min≈31`) leaves too few duration bins above it to fit the slope (the check crashed there).
+
+**Root cause of my error.** I selected the duration-`x_min` floor *because it made the known-good (critical) case pass* — structurally identical to over-fitting the calibration target. Each component (KS `x_min`, S0.2 count) is result-blind, but the *choice among candidate floors* was `Δ`-guided. Result-blind components do not compose into a result-blind rule for free.
+
+**Margin-safety (deferred, noted):** even a corrected estimator's *false-positive* safety — that it still **rejects** a small-`Δ` mismatch generator — must be certified against that generator, which lives in **S0.2**. So the estimator cannot be fully margin-certified from S0.1 alone.
+
+**Effect.** Backed the floor claim out of spec §4.4 and §5 (estimator marked OPEN; critical A.2 cell reported blocked/inconclusive). Plan Tasks 10–11 (binned-slope estimator) are not finalizable until the estimator is resolved. Nothing folded into the pre-registration. No pre-reg §10 entry (draft is unfrozen; §10 is for post-freeze deviations).
