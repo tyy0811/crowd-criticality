@@ -1,0 +1,45 @@
+=== S0.1 bias-floor diagnosis + reference-differenced Gate A.2 — writedown (2026-06-15) ===
+Source: verification/s0.1_snz_reference_gate.py
+Follows: 2026-06-15_writedown.txt (the 1/sigma-nu-z estimator triangulation).
+
+--- Step 1: bias-floor check (point estimates, large N; seed 21) ---
+       N  ratio   curv   tail |  D_curv  D_tail
+  100000  1.996  1.865  1.873 |  +0.131  +0.123
+  200000  1.984  1.888  1.873 |  +0.096  +0.111
+  400000  2.076  1.916  1.875 |  (noisy) +0.201
+  800000  1.978  1.929  1.874 |  +0.050  +0.104
+
+SPLIT FINDING (more informative than "floor" vs "benign"):
+  - curv CONVERGES: 1.865 -> 1.929 climbing toward 2; bias shrinks ~N^-0.46, faster than the
+    CI half-width ~N^-0.34, so curv is BENIGN (no flip in the limit).
+  - tail FLOORS: dead flat at ~1.874 from 100k to 800k; its Delta floors at ~0.126 and never
+    shrinks, so as the CI tightens it WILL flip to false-inconsistent. The dangerous case.
+
+--- Step 2: reference-differenced gate @ N=250000, B=25 (fixed x_min for speed) ---
+[curv] OLD contains0 on CRITICAL test:  CI=(+0.066,+0.124) -> contains0=False   (falsely rejected)
+       REF crit-vs-ref:      d-CI=(-0.045,+0.044) -> consistent=True             (RESCUED)
+       REF lookalike-vs-ref: d-CI=(+3.434,+3.890) -> rejected=True               (discriminated)
+[tail] OLD contains0 on CRITICAL test:  CI=(+0.098,+0.157) -> contains0=False   (falsely rejected)
+       REF crit-vs-ref:      d-CI=(-0.045,+0.038) -> consistent=True             (RESCUED)
+       REF lookalike-vs-ref: d-CI=(+1.826,+1.930) -> rejected=True               (discriminated)
+
+=== CONCLUSION ===
+The "consistent = Delta-CI contains 0" gate FALSELY REJECTS genuine criticality at large N
+(the bias floor; worsens with data; the informativeness ceiling cannot prevent it because
+"excludes 0" is not ceiling-governed). The reference-differenced gade -- "consistent =
+test-system Delta matches the SAME estimator's Delta on a matched synthetic-critical
+reference" -- rescues it: the common estimator bias differences out (critical stays consistent
+at all N, d-CI tight around 0) while the look-alike's genuine violation survives (rejected,
+d-CI far from 0). Verified for BOTH the converging estimator (curv) and the floored one (tail),
+and robust to the x_min choice.
+
+Caveat: fixed x_min narrows the CIs, so the OLD-gate flip appears even for curv here; under
+honest reselect-x_min, curv (benign) would likely still contain 0 at this N while tail (floored)
+flips. The reference gate rescues both regardless -- that robustness is the point.
+
+=== IMPLICATION (for cross-review, then pre-reg) ===
+Gate A.2's null should be the synthetic-critical REFERENCE Delta, not 0. This is the anchor
+check for a pre-reg §6 reformulation: "Delta consistent with 0" -> "Delta consistent with the
+matched synthetic-critical reference (same estimator, matched N/universality class)". Per the
+result-blind discipline the reference is calibrated on the synthetic critical generator only,
+never on the real/sim test system's Delta or n. Not locked: cross-review input.
