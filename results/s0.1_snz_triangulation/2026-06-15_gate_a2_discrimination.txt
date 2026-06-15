@@ -1,0 +1,45 @@
+=== S0.1 Gate A.2 discriminating-power probe — writedown (2026-06-15) ===
+Source: verification/s0.1_gate_a2_discrimination.py (8 seeds, curv estimator)
+Question: can A.2 separate a small genuine scaling violation from critical, across seeds,
+at achievable N?  Decision number: the RESOLUTION Delta_min(N).
+
+   N        Delta_crit(mean)   SD_seed   RESOLUTION Delta_min
+   20000    +0.172             0.172     0.486
+   50000    +0.079             0.088     0.249
+   100000   +0.043             0.086     0.244
+   200000   +0.036             0.060     0.170
+   400000   +0.013             0.042     0.119
+(partial-shuffle violations f=0.05..0.40 give V=0.2..2.1 and are RESOLVED wherever V>Delta_min.)
+
+=== FINDINGS ===
+1. Delta_crit -> 0 with N (+0.17 at 20k to +0.01 at 400k), 8 seeds. The "bias floor" is dead;
+   curv's residual is honest finite-N noise, not an irreducible offset. (Reconfirms the
+   multi-seed refutation of Finding 3.)
+2. RESOLUTION is COARSE and INTRINSIC. Delta_min ~0.24 at 100k, ~0.12 even at 400k. It is
+   2*sqrt(2)*SD_seed(Delta), and SD_seed is dominated by the CSN marginal-exponent variance
+   ((alpha-1)/(tau-1) amplifies tau,alpha estimation noise) -- NOT the 1/snz estimator. So a
+   better 1/snz estimator cannot fix it; the floor on resolvable violations is set by how
+   precisely tau and alpha can be measured at finite N.
+3. A.2 catches GROSS violations (a 5-10% shuffle, V~0.2-0.5) at >=50k, but cannot resolve fine
+   near-critical distinctions (Delta < ~0.12-0.24) at counts most markets will have (~1e3-1e5;
+   only the very largest reach 1e6 where Delta_min approaches ~0.1).
+
+=== RECOMMENDATION (for cross-review) ===
+Demote Gate A.2 from a precise quantitative gate to a COARSE CORROBORATIVE check, WITH this
+Delta_min(N) curve as the evidence (a measured finding, not a retreat). Concretely:
+- The headline criticality evidence stays the branching ratio n (the project's stated primary
+  object) + Gate A.1 (CSN power-law goodness-of-fit/LRT).
+- A.2 reports whether the scaling relation is GROSSLY violated, with the achieved-N resolution
+  Delta_min stated, as orthogonal support -- not a fine-threshold pass/fail.
+- The reference-differenced-null machinery becomes UNNECESSARY at this resolution: a coarse
+  corroborative check does not need bias-cancellation to ~0.04; report Delta and its CI
+  descriptively. (The reference-null's honest residual value -- truth-free real data -- is
+  noted but no longer load-bearing.)
+- Pre-reg consequence: reword Gate A.2 / H3 / §5.3 / §7 from "Delta consistent with 0" (which a
+  true critical generator does not hit precisely at finite N) to "scaling relation not grossly
+  violated, resolution Delta_min(N) reported." This is a §6-plus-dependents change for Q2.
+
+Still useful but no longer blocking: a cross-class cell (critical long-memory Hawkes, the
+market-relevant class) to confirm the scaling relation holds for non-GW critical systems at all.
+
+Nothing is locked or frozen. This is the measured input to the strategy cross-review.
