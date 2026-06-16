@@ -1,0 +1,8 @@
+=== Gate-0(a) writedown (2026-06-16) ===
+n_avalanches=20000
+[pure_powerlaw] role=A1-GATE A1_passes=True tau=2.526
+[csn_killer] role=A1-GATE A1_passes=False tau=2.350
+[critical] role=A2-GATE A2=not-grossly-violated (A1_LRT=True, informational) tau=1.514 alpha=1.997 1/snz=1.802 delta=0.172 resolution=0.145 boot_nan=0
+[scaling_breaker] role=A2-GATE A2=grossly-violated (A1_LRT=True, informational) tau=1.514 alpha=1.997 1/snz=-1.611 delta=3.461 resolution=1.054 boot_nan=0
+[backend n=0.6] {'thinning_mean': 7471.375, 'cluster_mean': 7647.25, 'se': 122.3756931251347, 'agree': True}
+PASSED=True
