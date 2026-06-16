@@ -21,6 +21,7 @@ class CellResult:
     inv_snz: float
     delta_mean: float
     resolution: float
+    boot_nan: int = 0  # # of NaN bootstrap-Delta replicates (>0 => verdict unreliable: N too low)
 
 
 @dataclass
@@ -59,12 +60,13 @@ def run_gate0a(rng, n_avalanches=20000, B=50, n_boot=50,
         a1_pass, _ = _a1(sizes, rng, n_boot)
         tau, alpha, inv = exponents(av)
         if name == "csn_killer":          # A.1-tier look-alike: no A.2 reading
-            label, dmean, res = None, float("nan"), float("nan")
+            label, dmean, res, bnan = None, float("nan"), float("nan"), 0
         else:
             dr = joint_bootstrap(av, B, rng)
+            bnan = int(np.isnan(dr.samples).sum())  # surface bin-depletion NaNs (see CellResult)
             label = corroborate(dr)        # coarse: not-grossly-violated / grossly-violated
             dmean, res = float(dr.samples.mean()), float(dr.halfwidth)
-        cells[name] = CellResult(name, a1_pass, label, tau, alpha, inv, dmean, res)
+        cells[name] = CellResult(name, a1_pass, label, tau, alpha, inv, dmean, res, bnan)
 
     backend = _backend_crosscheck(rng)
     passed = (cells["critical"].a1_passes
@@ -87,7 +89,8 @@ def _writedown(cells, backend, passed, n_avalanches, out_dir):
         for c in cells.values():
             fh.write(f"[{c.name}] A1_passes={c.a1_passes} A2={c.a2_label} "
                      f"tau={c.tau:.3f} alpha={c.alpha:.3f} 1/snz={c.inv_snz:.3f} "
-                     f"delta={c.delta_mean:.3f} resolution={c.resolution:.3f}\n")
+                     f"delta={c.delta_mean:.3f} resolution={c.resolution:.3f} "
+                     f"boot_nan={c.boot_nan}\n")
         fh.write(f"[backend n=0.6] {backend}\n")
         fh.write(f"PASSED={passed}\n")
     return path
