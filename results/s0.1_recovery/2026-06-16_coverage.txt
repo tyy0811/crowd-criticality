@@ -1,0 +1,23 @@
+=== S0.1 recovery-coverage trip-wire (2026-06-16) ===
+Profile-likelihood CI coverage of the planted branching ratio n.
+n_events=10000, R=30 per cell, seed=20260615, profile CI from hawkes.mle.fit.
+
+n=0.3 : coverage=0.933 (28/30)  median_nhat=0.296
+n=0.6 : coverage=0.967 (29/30)  median_nhat=0.591
+n=0.9 : coverage=1.000 (30/30)  median_nhat=0.902   <- near-boundary cell, no calibration drift
+
+Corroboration (earlier R=12 run, same seed): n=0.3 11/12 (0.917); n=0.6 11/12 (0.917).
+
+INTERPRETATION (read honestly):
+- This is a GROSS-MISCALIBRATION TRIP-WIRE, not a >=0.90 certification. All three cells
+  are clean (observed >=0.93; n=0.9 perfect), median_nhat tracks truth -> no sign of gross
+  miscalibration, calibration corroborated.
+- R=30 is UNDERPOWERED to certify the 0.90 DoD threshold: Clopper-Pearson 95% lower bound
+  is ~0.88 even at 30/30. The full >=0.90 certification is DEFERRED to the full grid
+  (R>=50, all n) run via Modal CPU fan-out at S0.2 (one realization per container avoids
+  the 8-core x ~150s/fit wall hit here). Per-fit lever for S0.2: warm-start the profile's
+  nuisance (mu,beta) optimization from the previous grid point (cuts the fundamental cost).
+- Coverage is DISTINCT from the Task-8 unit test: Task 8 verifies the CI is CONSTRUCTED
+  correctly (brackets planted n); this verifies it is CALIBRATED (contains truth at the
+  nominal rate), the property that drifts near n->1 even when construction is fine.
+See DECISIONS.md 2026-06-16.
