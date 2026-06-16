@@ -1,7 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, brentq
+from scipy.stats import chi2
 
 _BETA_STARTS = (0.5, 1.0, 2.0, 5.0)
 
@@ -45,6 +46,30 @@ def _fit_full(times, horizon):
     return best
 
 
+def _profile_nll(n_fixed, times, horizon):
+    best = np.inf
+    mu0 = times.size / horizon * 0.5
+    for b0 in _BETA_STARTS:
+        r = minimize(lambda p: _nll([p[0], n_fixed, p[1]], times, horizon),
+                     [mu0, b0], method="L-BFGS-B", bounds=[(1e-9, None)] * 2)
+        best = min(best, r.fun)
+    return best
+
+
+def _profile_ci(times, horizon, n_hat, nll_min, level):
+    thr = chi2.ppf(level, 1)
+    g = lambda nf: 2.0 * (_profile_nll(nf, times, horizon) - nll_min) - thr
+    lo_b = max(1e-6, n_hat - 0.01)
+    while lo_b > 1e-6 and g(lo_b) < 0:
+        lo_b = max(1e-6, lo_b - 0.1)
+    lo = brentq(g, lo_b, n_hat) if g(lo_b) > 0 else lo_b
+    hi_b = n_hat + 0.01            # free to exceed 1 (stationarity-unconstrained)
+    while g(hi_b) < 0 and hi_b < n_hat + 5.0:
+        hi_b += 0.1
+    hi = brentq(g, n_hat, hi_b) if g(hi_b) > 0 else hi_b
+    return (float(lo), float(hi))
+
+
 def fit(events, level=0.95):
     times = np.asarray(events.times, dtype=float)
     horizon = float(events.horizon)
@@ -52,4 +77,6 @@ def fit(events, level=0.95):
         raise ValueError("need >= 10 events to fit")
     res = _fit_full(times, horizon)
     mu, n, beta = res.x
-    return HawkesFit(n=float(n), mu=float(mu), beta=float(beta), loglik=float(-res.fun))
+    ci = _profile_ci(times, horizon, n, res.fun, level)
+    return HawkesFit(n=float(n), mu=float(mu), beta=float(beta),
+                     loglik=float(-res.fun), ci=ci)

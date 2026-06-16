@@ -16,3 +16,12 @@ def test_unconstrained_n_positive():
                   rng=np.random.default_rng(8))
     f = fit(es)
     assert f.n > 0  # optimizer does not impose n < 1
+
+
+def test_profile_ci_contains_planted_n():
+    es = simulate(0.5, 5000.0, mu=0.6, beta=1.0, backend="thinning",
+                  rng=np.random.default_rng(9))
+    f = fit(es)
+    lo, hi = f.ci
+    assert lo < f.n < hi
+    assert lo <= 0.5 <= hi
