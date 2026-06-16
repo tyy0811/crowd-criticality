@@ -80,7 +80,7 @@ def run_gate0a(rng, n_avalanches=20000, B=40, n_boot=40,
     must pass; `csn_killer` (subcritical GW, real cutoff) must reject. The critical GW is
     NOT an A.1 control (its Borel sizes are only asymptotically a power law); it anchors
     the A.2 axis, with its A.1 reported informationally."""
-    pure = pure_power_law(n_avalanches, rng)            # exact s^-3/2 -> A.1 positive control
+    pure = pure_power_law(n_avalanches, rng)            # exact Zipf s^-2.5 (not s^-1.5: see exact.py) -> A.1 positive control
     killer = galton_watson(0.7, n_avalanches, rng)      # subcritical cutoff -> A.1 negative control
     crit = galton_watson(1.0, n_avalanches, rng)        # critical -> A.2 (scaling relation holds)
     breaker = scaling_break(crit, delta=1.0, rng=rng)   # pairing shuffled -> A.2 negative control
