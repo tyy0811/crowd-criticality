@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import warnings
 import numpy as np
 from scipy.optimize import minimize, brentq
 from scipy.stats import chi2
@@ -66,7 +67,16 @@ def _profile_ci(times, horizon, n_hat, nll_min, level):
     hi_b = n_hat + 0.01            # free to exceed 1 (stationarity-unconstrained)
     while g(hi_b) < 0 and hi_b < n_hat + 5.0:
         hi_b += 0.1
-    hi = brentq(g, n_hat, hi_b) if g(hi_b) > 0 else hi_b
+    if g(hi_b) > 0:
+        hi = brentq(g, n_hat, hi_b)
+    else:
+        warnings.warn(
+            f"profile CI upper bracket did not cross the chi2 threshold within "
+            f"n_hat+5 (n_hat={n_hat:.4f}); hi={hi_b:.4f} is a fallback bound, not "
+            f"a true profile-likelihood limit",
+            RuntimeWarning, stacklevel=2,
+        )
+        hi = hi_b
     return (float(lo), float(hi))
 
 
