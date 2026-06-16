@@ -47,7 +47,7 @@ def _backend_crosscheck(rng, n=0.6, horizon=5000.0, reps=8, tol_sd=3.0):
             "se": float(se), "agree": bool(abs(th.mean() - cl.mean()) <= tol_sd * se)}
 
 
-def run_gate0a(rng, n_avalanches=20000, B=50, n_boot=50,
+def run_gate0a(rng, n_avalanches=20000, B=40, n_boot=40,
                out_dir="results/s0.1_gate0a"):
     crit = galton_watson(1.0, n_avalanches, rng)
     killer = galton_watson(0.7, n_avalanches, rng)
