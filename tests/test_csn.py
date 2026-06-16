@@ -3,6 +3,7 @@ from critaudit.powerlaw.csn import fit_powerlaw
 
 
 def test_recovers_exponent_and_passes():
+    np.random.seed(0)  # powerlaw.generate_random draws from numpy's GLOBAL RNG — seed it for determinism
     x = powerlaw.Power_Law(xmin=1, parameters=[2.5], discrete=True).generate_random(5000)
     f = fit_powerlaw(x, rng=np.random.default_rng(0), n_boot=50)
     assert 2.3 < f.exponent < 2.7
@@ -10,6 +11,7 @@ def test_recovers_exponent_and_passes():
 
 
 def test_truncated_sample_fails_via_lrt():
+    np.random.seed(1)  # powerlaw.generate_random draws from numpy's GLOBAL RNG — seed it for determinism
     rng = np.random.default_rng(1)
     # power-law body with a hard exponential cutoff -> truncated favoured
     x = powerlaw.Power_Law(xmin=1, parameters=[2.0], discrete=True).generate_random(8000)
