@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 from critaudit.powerlaw.csn import _fit   # the powerlaw.Fit wrapper from Task 6
+from critaudit.types import AvalancheSet
 
 
 @dataclass
@@ -43,3 +44,18 @@ def exponents(av, min_count=50, xmin_size=None, xmin_dur=None):
 def delta(av, min_count=50):
     tau, alpha, inv = exponents(av, min_count)
     return (alpha - 1.0) / (tau - 1.0) - inv
+
+
+def joint_bootstrap(av, B, rng, min_count=50):
+    """Resample avalanches; re-estimate all exponents per replicate (re-running CSN
+    so x_min is re-selected each replicate) -> Delta's bootstrap CI for reporting."""
+    sizes, durations = _clean(av)
+    N = sizes.size
+    samples = np.empty(B)
+    for b in range(B):
+        idx = rng.integers(0, N, size=N)
+        sub = AvalancheSet(sizes=sizes[idx], durations=durations[idx])
+        tau, alpha, inv = exponents(sub, min_count)
+        samples[b] = (alpha - 1.0) / (tau - 1.0) - inv
+    lo, hi = np.percentile(samples, [2.5, 97.5])
+    return DeltaResult(samples=samples, ci=(float(lo), float(hi)), halfwidth=float((hi - lo) / 2))

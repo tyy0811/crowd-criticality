@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from critaudit.generators.branching import galton_watson
 from critaudit.types import AvalancheSet
-from critaudit.scaling.crackling import exponents, delta, _clean
+from critaudit.scaling.crackling import exponents, delta, _clean, joint_bootstrap, DeltaResult
 
 
 def test_critical_exponents_coarse():
@@ -32,3 +32,21 @@ def test_clean_excludes_censored():
     )
     np.testing.assert_array_equal(clean_s, sizes[expected_mask])
     np.testing.assert_array_equal(clean_d, durations[expected_mask])
+
+
+def test_joint_bootstrap_structure():
+    crit = galton_watson(1.0, 5000, np.random.default_rng(11))
+    dr = joint_bootstrap(crit, B=10, rng=np.random.default_rng(12))
+    assert isinstance(dr, DeltaResult)
+    assert dr.samples.size == 10
+    assert dr.halfwidth > 0 and np.isfinite(dr.halfwidth)
+    assert dr.ci[0] <= dr.ci[1]
+
+
+@pytest.mark.slow
+def test_joint_bootstrap_brackets_small_delta():
+    crit = galton_watson(1.0, 40000, np.random.default_rng(13))
+    dr = joint_bootstrap(crit, B=30, rng=np.random.default_rng(14))
+    assert dr.samples.size == 30
+    assert dr.ci[0] < dr.ci[1]
+    assert abs(float(np.median(dr.samples))) < 0.3   # CI brackets a small |Delta| (coarse)
