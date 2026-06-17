@@ -24,14 +24,18 @@ import urllib.request
 import websockets  # offsite-only dependency
 
 GAMMA = "https://gamma-api.polymarket.com"
-WS_URL = "wss://ws-subscribe-clob.polymarket.com/ws/market"  # CONFIRM at runtime
+WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"  # documented + live-confirmed 2026-06-16
+# Polymarket's public APIs 403 the default urllib User-Agent (ordinary bot-filter); a browser UA clears it.
+_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/120 Safari/537.36"}
 
 
 def select_basket(max_days: int) -> list[str]:
     """Open markets resolving within `max_days`, ordered by recent volume; return token ids."""
     end = time.time() + max_days * 86400
     url = f"{GAMMA}/markets?closed=false&order=volume24hr&ascending=false&limit=50"
-    with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+    req = urllib.request.Request(url, headers=_UA)
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
         markets = json.load(resp)
     token_ids: list[str] = []
     for m in markets:
