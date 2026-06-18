@@ -1,6 +1,6 @@
 import numpy as np
 
-from critaudit.hawkes.binned import ExpKernel, PowerLawKernel, _nll, fit_binned, certify_granularity
+from critaudit.hawkes.binned import ExpKernel, PowerLawKernel, _nll, fit_binned, fit_full, certify_granularity
 from critaudit.generators.hawkes_sim import simulate
 from critaudit.generators import powerlaw_hawkes
 
@@ -55,3 +55,23 @@ def test_powerlaw_generator_residuals_are_exp1():
     resid = np.diff(powerlaw_hawkes.rescaled_times(t, 0.4, 0.6, 0.4, 0.5))
     assert 0.85 < resid.mean() < 1.15            # ~1.0 if the generator matches the model
     assert t.size > 1000
+
+
+def test_fit_full_matches_certify_granularity_n_full():
+    # The gate must judge the EXACT fit the cert reports -> fit_full's n == certify's n_full, bit-for-bit.
+    t = powerlaw_hawkes.simulate(0.6, 600.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
+    k = PowerLawKernel(eps=0.4, c=0.5)
+    _, n = fit_full(t, 600.0, k)
+    cert = certify_granularity(t, 2.0, 600.0, k, np.random.default_rng(1), em_iters=6, sweeps=2)
+    assert abs(n - cert.n_full) < 1e-9
+
+
+def test_fit_full_tolerates_ms_ties():
+    # Ties (Δt=0) are the original `inf` failure family. The continuous full fit must stay finite and
+    # sane even with many trades at the EXACT same instant (multi-fill matches at ms resolution).
+    t = powerlaw_hawkes.simulate(0.7, 800.0, 0.3, 0.5, 1.0, np.random.default_rng(0))
+    mid = t[t.size // 2]
+    t_tied = np.sort(np.concatenate([t, np.full(25, mid)]))   # 25 trades at one instant
+    mu, n = fit_full(t_tied, 800.0, PowerLawKernel(eps=0.5, c=1.0))
+    assert np.isfinite(mu) and np.isfinite(n)
+    assert 0.0 < n < 1.0 and mu > 0.0

@@ -150,6 +150,16 @@ class GranularityCert:
     fit: BinnedFit
 
 
+def fit_full(times, horizon, kernel):
+    """Continuous full-resolution Hawkes MLE -> (mu, n) with the kernel SHAPE fixed. The reference
+    the granularity cert compares against AND the fit the GoF judges -- exposed (not discarded) so
+    both callers see the identical deterministic result. Tolerates Δt=0 ties: the SOE + Lomax
+    c-offset never reach phi(0)=inf (verified 2026-06-18)."""
+    a, betas = kernel.soe()
+    t = np.sort(np.asarray(times, dtype=float))
+    return _mle(t, horizon, a, betas, t.size / horizon * 0.5)
+
+
 def certify_granularity(times, grid, horizon, kernel, rng, **mcem_kw) -> GranularityCert:
     """Real-data granularity certification: does grid-quantization preserve n̂ on THESE dynamics?
 
@@ -158,8 +168,7 @@ def certify_granularity(times, grid, horizon, kernel, rng, **mcem_kw) -> Granula
     with grid=2 s, this IS the real-data granularity certification — the remaining S0.4 risk: a small
     |diff| certifies that 2 s block-time (source A) loses no n̂ information for this market's dynamics.
     """
-    a, betas = kernel.soe()
     t = np.sort(np.asarray(times, dtype=float))
-    n_full = _mle(t, horizon, a, betas, t.size / horizon * 0.5)[1]
+    n_full = fit_full(t, horizon, kernel)[1]
     fit = fit_binned(_counts(t, grid, horizon), grid, horizon, kernel, rng, **mcem_kw)
     return GranularityCert(n_full=n_full, n_binned=fit.n, diff=fit.n - n_full, fit=fit)
