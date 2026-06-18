@@ -101,6 +101,68 @@ def exact_integrated(t, n, eps, c):
     return n * (1.0 - (c / (c + np.asarray(t, float))) ** eps)
 
 
+# --- Likelihoods: SOE (O(N*M), the MCEM engine) + exact (O(N^2), the anchor reference). Both fit
+#     (mu, n) with the kernel SHAPE (eps, c) known — the favorable case that isolates n-recovery. ---
+
+def _soe_recursion_A(times, betas):
+    """A_k(i) = sum_{j<i} exp(-beta_k (t_i - t_j)); O(N*M) recursion. Returns (N, M)."""
+    t = np.asarray(times, float)
+    A = np.zeros((t.size, betas.size))
+    for i in range(1, t.size):
+        A[i] = np.exp(-betas * (t[i] - t[i - 1])) * (A[i - 1] + 1.0)
+    return A
+
+
+def soe_nll(params, times, horizon, a_hat, betas):
+    """Neg-log-lik of (mu, n), fixed unit-mass SOE shape (a_hat, betas). lambda = mu + n*(A.a_hat)."""
+    mu, n = params
+    if mu <= 0 or n <= 0:
+        return np.inf
+    t = np.asarray(times, float)
+    lam = mu + n * (_soe_recursion_A(t, betas) @ a_hat)
+    if np.any(lam <= 0):
+        return np.inf
+    comp = mu * horizon + n * np.sum((a_hat / betas) * (1.0 - np.exp(-np.outer(horizon - t, betas))).sum(0))
+    return -(np.sum(np.log(lam)) - comp)
+
+
+def soe_mle(times, horizon, eps, c, M=60):
+    """Recover (mu, n) via the SOE likelihood; kernel SHAPE (eps, c) known. O(N*M)/eval."""
+    from scipy.optimize import minimize
+    a_hat, betas = fit_soe(1.0, eps, c, M=M)            # unit-mass shape
+    mu0 = times.size / horizon * 0.5
+    best = None
+    for n0 in (0.3, 0.6, 0.9):
+        r = minimize(soe_nll, [mu0, n0], args=(times, horizon, a_hat, betas),
+                     method="L-BFGS-B", bounds=[(1e-9, None), (1e-9, None)])
+        best = r if best is None or r.fun < best.fun else best
+    return float(best.x[0]), float(best.x[1])
+
+
+def exact_nll(params, times, horizon, eps, c):
+    """Exact O(N^2) neg-log-lik of (mu, n) — the reference the SOE engine is anchored against."""
+    mu, n = params
+    if mu <= 0 or n <= 0:
+        return np.inf
+    lam = intensity_powerlaw(times, mu, n, eps, c)
+    if np.any(lam <= 0):
+        return np.inf
+    t = np.asarray(times, float)
+    comp = mu * horizon + np.sum(n * (1.0 - (c / (c + horizon - t)) ** eps))
+    return -(np.sum(np.log(lam)) - comp)
+
+
+def exact_mle(times, horizon, eps, c):
+    from scipy.optimize import minimize
+    mu0 = times.size / horizon * 0.5
+    best = None
+    for n0 in (0.3, 0.6, 0.9):
+        r = minimize(exact_nll, [mu0, n0], args=(times, horizon, eps, c),
+                     method="L-BFGS-B", bounds=[(1e-9, None), (1e-9, None)])
+        best = r if best is None or r.fun < best.fun else best
+    return float(best.x[0]), float(best.x[1])
+
+
 if __name__ == "__main__":
     from scipy import stats
 
