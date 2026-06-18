@@ -1,7 +1,8 @@
 import numpy as np
 
-from critaudit.hawkes.binned import ExpKernel, PowerLawKernel, _nll, fit_binned
+from critaudit.hawkes.binned import ExpKernel, PowerLawKernel, _nll, fit_binned, certify_granularity
 from critaudit.generators.hawkes_sim import simulate
+from critaudit.generators import powerlaw_hawkes
 
 # Full recovery validation (the granularity verdict) lives in stage1/granularity; these package tests
 # confirm the production estimator is CORRECT and runs — fast and CI-safe.
@@ -36,3 +37,21 @@ def test_fit_binned_smoke_recovers_in_range():
     assert 0.35 < fit.n < 0.85
     assert 0.0 <= fit.acceptance <= 1.0 and fit.ess > 0
     assert len(fit.trajectory) == 10
+
+
+def test_certify_granularity_runs():
+    # The certification harness: full-timing n̂ vs binned-MCEM n̂. On real source-B data (sub-2 s match
+    # timestamps) this IS the real-data granularity certification. Smoke: runs and returns a consistent cert.
+    es = simulate(0.6, 150.0, mu=0.6, beta=0.5, rng=np.random.default_rng(2))
+    cert = certify_granularity(es.times, 2.0, 150.0, ExpKernel(beta=0.5),
+                               np.random.default_rng(3), em_iters=8, sweeps=2)
+    assert np.isfinite(cert.n_full) and np.isfinite(cert.n_binned)
+    assert abs(cert.diff - (cert.n_binned - cert.n_full)) < 1e-9
+
+
+def test_powerlaw_generator_residuals_are_exp1():
+    # The promoted power-law generator: Ogata residuals via the exact compensator are ~ Exp(1).
+    t = powerlaw_hawkes.simulate(0.6, 3000.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
+    resid = np.diff(powerlaw_hawkes.rescaled_times(t, 0.4, 0.6, 0.4, 0.5))
+    assert 0.85 < resid.mean() < 1.15            # ~1.0 if the generator matches the model
+    assert t.size > 1000

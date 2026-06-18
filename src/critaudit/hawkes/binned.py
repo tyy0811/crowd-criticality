@@ -135,3 +135,31 @@ def fit_binned(counts, grid, horizon, kernel, rng, *, em_iters=20, sweeps=4, n0=
     post = traj[burn:] if len(traj) > burn else traj[-1:]
     return BinnedFit(n=float(np.mean(post)), mu=float(mu),
                      acceptance=float(np.mean(accs)), ess=_ess(post), trajectory=traj)
+
+
+def _counts(times, grid, horizon):
+    nb = int(np.ceil(horizon / grid))
+    return np.histogram(times, bins=np.arange(nb + 1) * grid)[0].astype(float)
+
+
+@dataclass
+class GranularityCert:
+    n_full: float            # branching ratio from full-resolution timing (the reference)
+    n_binned: float          # from grid-quantized counts, via within-bin marginalization
+    diff: float              # n_binned - n_full
+    fit: BinnedFit
+
+
+def certify_granularity(times, grid, horizon, kernel, rng, **mcem_kw) -> GranularityCert:
+    """Real-data granularity certification: does grid-quantization preserve n̂ on THESE dynamics?
+
+    Fit n on the full (sub-grid) timing -> n_full (reference); fit n on the grid-binned counts via the
+    within-bin-marginalizing estimator -> n_binned. On real source-B trades (sub-2 s match timestamps)
+    with grid=2 s, this IS the real-data granularity certification — the remaining S0.4 risk: a small
+    |diff| certifies that 2 s block-time (source A) loses no n̂ information for this market's dynamics.
+    """
+    a, betas = kernel.soe()
+    t = np.sort(np.asarray(times, dtype=float))
+    n_full = _mle(t, horizon, a, betas, t.size / horizon * 0.5)[1]
+    fit = fit_binned(_counts(t, grid, horizon), grid, horizon, kernel, rng, **mcem_kw)
+    return GranularityCert(n_full=n_full, n_binned=fit.n, diff=fit.n - n_full, fit=fit)
