@@ -1,0 +1,38 @@
+import numpy as np
+
+from critaudit.hawkes.binned import ExpKernel, PowerLawKernel, _nll, fit_binned
+from critaudit.generators.hawkes_sim import simulate
+
+# Full recovery validation (the granularity verdict) lives in stage1/granularity; these package tests
+# confirm the production estimator is CORRECT and runs — fast and CI-safe.
+
+
+def test_kernels_have_unit_mass_soe():
+    # Modular interface contract: each kernel's SOE shape integrates to 1 (sum a/beta == 1), so the
+    # fitted scale IS the branching ratio. Exponential and power-law plug in identically.
+    for kernel in (ExpKernel(beta=0.5), PowerLawKernel(eps=0.4, c=0.5), PowerLawKernel(eps=0.3, c=0.25)):
+        a, betas = kernel.soe()
+        assert abs(float((a / betas).sum()) - 1.0) < 1e-6
+
+
+def test_nll_prefers_true_branching_ratio():
+    # Deterministic: on clean data the SOE likelihood is lower (better) at the true n than at a wrong,
+    # near-critical n — anchors the likelihood without the slow MCEM.
+    es = simulate(0.6, 1000.0, mu=0.6, beta=0.5, rng=np.random.default_rng(0))
+    a, betas = ExpKernel(beta=0.5).soe()
+    nll_true = _nll([0.6, 0.6], es.times, 1000.0, a, betas)
+    nll_wrong = _nll([0.6, 0.95], es.times, 1000.0, a, betas)
+    assert np.isfinite(nll_true) and nll_true < nll_wrong
+
+
+def test_fit_binned_smoke_recovers_in_range():
+    # Small-config smoke: the production estimator runs end-to-end and recovers n in a plausible band
+    # (binned-Poisson would read ~0.9 here). Tight recovery is validated at scale in stage1.
+    es = simulate(0.6, 200.0, mu=0.6, beta=0.5, rng=np.random.default_rng(1))
+    nb = int(np.ceil(200.0 / 2.0))
+    counts = np.histogram(es.times, bins=np.arange(nb + 1) * 2.0)[0].astype(float)
+    fit = fit_binned(counts, 2.0, 200.0, ExpKernel(beta=0.5), np.random.default_rng(7),
+                     em_iters=10, sweeps=2)
+    assert 0.35 < fit.n < 0.85
+    assert 0.0 <= fit.acceptance <= 1.0 and fit.ess > 0
+    assert len(fit.trajectory) == 10
