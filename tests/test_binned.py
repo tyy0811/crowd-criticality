@@ -75,3 +75,16 @@ def test_fit_full_tolerates_ms_ties():
     mu, n = fit_full(t_tied, 800.0, PowerLawKernel(eps=0.5, c=1.0))
     assert np.isfinite(mu) and np.isfinite(n)
     assert 0.0 < n < 1.0 and mu > 0.0
+
+
+def test_certify_granularity_accepts_precomputed_n_full():
+    # The driver already has n_full from fit_full; passing it in must skip the second full MLE and give
+    # a bit-identical cert vs recomputing (deterministic fit_full).
+    t = powerlaw_hawkes.simulate(0.6, 600.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
+    k = PowerLawKernel(eps=0.4, c=0.5)
+    n_full = fit_full(t, 600.0, k)[1]
+    c_recompute = certify_granularity(t, 2.0, 600.0, k, np.random.default_rng(1), em_iters=4, sweeps=2)
+    c_passed = certify_granularity(t, 2.0, 600.0, k, np.random.default_rng(1), n_full=n_full,
+                                   em_iters=4, sweeps=2)
+    assert c_recompute.n_full == c_passed.n_full == n_full
+    assert abs(c_recompute.diff - c_passed.diff) < 1e-12   # same rng + same n_full -> identical

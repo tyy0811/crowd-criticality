@@ -160,7 +160,7 @@ def fit_full(times, horizon, kernel):
     return _mle(t, horizon, a, betas, t.size / horizon * 0.5)
 
 
-def certify_granularity(times, grid, horizon, kernel, rng, **mcem_kw) -> GranularityCert:
+def certify_granularity(times, grid, horizon, kernel, rng, *, n_full=None, **mcem_kw) -> GranularityCert:
     """Real-data granularity certification: does grid-quantization preserve n̂ on THESE dynamics?
 
     Fit n on the full (sub-grid) timing -> n_full (reference); fit n on the grid-binned counts via the
@@ -169,6 +169,7 @@ def certify_granularity(times, grid, horizon, kernel, rng, **mcem_kw) -> Granula
     |diff| certifies that 2 s block-time (source A) loses no n̂ information for this market's dynamics.
     """
     t = np.sort(np.asarray(times, dtype=float))
-    n_full = fit_full(t, horizon, kernel)[1]
+    if n_full is None:
+        n_full = fit_full(t, horizon, kernel)[1]
     fit = fit_binned(_counts(t, grid, horizon), grid, horizon, kernel, rng, **mcem_kw)
     return GranularityCert(n_full=n_full, n_binned=fit.n, diff=fit.n - n_full, fit=fit)
