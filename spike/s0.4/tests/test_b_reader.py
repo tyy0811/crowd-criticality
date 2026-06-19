@@ -75,3 +75,20 @@ def test_dup_price_consecutive_count(tmp_path):
                              _rec("A", t0 + 2, price="0.6")])
     (m,) = read_markets(path)
     assert m.n_dup_price_consecutive == 1              # the 2nd 0.5 repeats the 1st
+
+
+def test_skips_overflow_timestamp_and_unhashable_asset(tmp_path):
+    # #7: JSON-valid but pathological records must be SKIPPED, not crash the reader. int(float("1e999"))
+    # raises OverflowError; an unhashable/non-string asset_id breaks the per-asset dict.
+    t0 = 1_700_000_000_000
+    lines = [
+        _rec("A", t0),
+        json.dumps({"recv_ts": 0.0, "msg": {"event_type": "last_trade_price", "asset_id": "A",
+                                            "timestamp": "1e999", "price": "0.5"}}),       # float inf -> OverflowError
+        json.dumps({"recv_ts": 0.0, "msg": {"event_type": "last_trade_price", "asset_id": ["bad"],
+                                            "timestamp": str(t0 + 100), "price": "0.5"}}),  # unhashable asset
+        _rec("A", t0 + 200),
+    ]
+    path = _write(tmp_path, lines)
+    (m,) = read_markets(path)                           # must not raise
+    assert m.asset_id == "A" and m.n_events == 2        # only the two clean A trades

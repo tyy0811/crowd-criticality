@@ -122,3 +122,95 @@ def test_certify_capture_end_to_end_recovers_n(tmp_path):
     assert verdicts["DENSE"].status == "certified"
     assert abs(verdicts["DENSE"].n_full - 0.6) < 0.15
     assert np.isfinite(verdicts["DENSE"].cert.diff)   # ties survived the full path, fit stayed finite
+
+
+# ---- Review-driven robustness fixes (#1-7) ----
+
+def test_gof_survives_bootstrap_explosion(monkeypatch):
+    # #1: a near-critical fit makes simulate() raise RuntimeError(event explosion); the bootstrap must
+    # DROP the replicate, never propagate -> certify_capture cannot crash on the target regime.
+    import realdata_cert as rc
+    k = PowerLawKernel(eps=0.4, c=0.5)
+    t = powerlaw_hawkes.simulate(0.6, 600.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
+    mu, n = fit_full(t, float(t[-1]), k)
+
+    def boom(*a, **kw):
+        raise RuntimeError("event explosion -- check n < 1")
+    monkeypatch.setattr(rc.powerlaw_hawkes, "simulate", boom)
+    gof = rc.goodness_of_fit(t, mu, n, k, np.random.default_rng(1), B=20, p_flag=0.10)
+    assert gof.b_eff == 0 and not np.isfinite(gof.p_boot) and not gof.passed
+
+
+def test_gof_requires_min_b_eff(monkeypatch):
+    # #2: too few effective replicates can NEVER flag at p_flag (min p_boot = 1/(1+b_eff)); such a
+    # market must be inconclusive, not a (false) certify.
+    import realdata_cert as rc
+    k = PowerLawKernel(eps=0.4, c=0.5)
+    t = powerlaw_hawkes.simulate(0.6, 600.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
+    mu, n = fit_full(t, float(t[-1]), k)
+    real_sim = rc.powerlaw_hawkes.simulate
+    calls = {"i": 0}
+
+    def few(*a, **kw):
+        calls["i"] += 1
+        return real_sim(*a, **kw) if calls["i"] <= 3 else np.array([0.0, 1.0])  # else dropped (size<10)
+    monkeypatch.setattr(rc.powerlaw_hawkes, "simulate", few)
+    gof = rc.goodness_of_fit(t, mu, n, k, np.random.default_rng(1), B=20, p_flag=0.10)
+    assert 0 < gof.b_eff < 10 and not np.isfinite(gof.p_boot)   # b_eff < ceil(1/0.10)=10 -> inconclusive
+
+
+def test_gof_nan_d_obs_skips_bootstrap(monkeypatch):
+    # #3: a degenerate observed series (d_obs NaN) -> inconclusive WITHOUT running the bootstrap, not a
+    # confident flagged_shape_misfit.
+    import realdata_cert as rc
+    k = PowerLawKernel(eps=0.4, c=0.5)
+    calls = {"i": 0}
+
+    def count_sim(*a, **kw):
+        calls["i"] += 1
+        return np.array([0.0, 1.0])
+    monkeypatch.setattr(rc.powerlaw_hawkes, "simulate", count_sim)
+    gof = rc.goodness_of_fit(np.array([0.0, 5.0]), 0.4, 0.6, k, np.random.default_rng(0), B=20)
+    assert not np.isfinite(gof.stat) and not np.isfinite(gof.p_boot) and not gof.passed
+    assert calls["i"] == 0   # bootstrap was skipped
+
+
+def test_ks_stat_returns_stat_and_pvalue():
+    # #5: _ks_stat returns (stat, pvalue) from ONE rescaling+kstest (was computing rescaled_times twice).
+    from realdata_cert import _ks_stat
+    k = PowerLawKernel(eps=0.4, c=0.5)
+    t = powerlaw_hawkes.simulate(0.6, 600.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
+    stat, pval = _ks_stat(t, 0.4, 0.6, k)
+    assert np.isfinite(stat) and 0.0 <= pval <= 1.0
+    s2, p2 = _ks_stat(np.array([0.0, 1.0]), 0.4, 0.6, k)   # <3 events -> both nan
+    assert not np.isfinite(s2) and not np.isfinite(p2)
+
+
+def test_per_market_rng_is_order_independent():
+    # #6: each market's bootstrap rng is keyed by asset_id, so a market's verdict is independent of
+    # capture order / other markets' rng consumption.
+    from realdata_cert import _spawn_market_rngs
+    mA, mB = _market("A", [0., 1., 2.]), _market("B", [0., 1., 2.])
+    r_ab = _spawn_market_rngs(np.random.default_rng(0), [mA, mB])   # order A,B
+    r_ba = _spawn_market_rngs(np.random.default_rng(0), [mB, mA])   # order B,A
+    np.testing.assert_array_equal(r_ab[0].random(5), r_ba[1].random(5))  # asset A: same stream
+    np.testing.assert_array_equal(r_ab[1].random(5), r_ba[0].random(5))  # asset B: same stream
+
+
+def test_module_imports_without_conftest_path(tmp_path):
+    # #3b: realdata_cert must import outside pytest (no conftest sys.path). Load it by file path in a
+    # fresh interpreter from a neutral cwd and confirm `from b_reader import` resolved.
+    import subprocess
+    import sys as _sys
+    import pathlib
+    mod = pathlib.Path(__file__).resolve().parent.parent / "realdata_cert.py"
+    # Load by file path with spike/s0.4 NOT on sys.path (neutral cwd, no PYTHONPATH): only the module's
+    # own self-bootstrap can resolve `from b_reader import`. Register in sys.modules as the normal import
+    # machinery does, so @dataclass's module lookup works (else the test, not the fix, fails).
+    code = ("import importlib.util as u, sys;"
+            f"s=u.spec_from_file_location('realdata_cert', r'{mod}');"
+            "m=u.module_from_spec(s); sys.modules['realdata_cert']=m; s.loader.exec_module(m);"
+            "print(hasattr(m,'certify_capture') and hasattr(m,'read_markets'))")
+    r = subprocess.run([_sys.executable, "-c", code], capture_output=True, text=True, cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "True"

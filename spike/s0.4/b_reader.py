@@ -52,7 +52,9 @@ def read_markets(path, *, event_unit="fill"):
             try:
                 ts_ms = int(float(msg["timestamp"]))
                 asset = msg["asset_id"]
-            except (KeyError, TypeError, ValueError):
+                if not isinstance(asset, str):       # non-string -> unhashable dict key risk; skip
+                    raise TypeError("asset_id must be a string")
+            except (KeyError, TypeError, ValueError, OverflowError):  # OverflowError: int(float("1e999"))
                 bad += 1
                 continue
             by_asset.setdefault(asset, []).append((ts_ms, msg.get("price")))
