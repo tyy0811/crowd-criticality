@@ -27,11 +27,30 @@ class MarketEvents:
     n_dup_price_consecutive: int # consecutive same-price fills (confirms per-fill emission)
 
 
-def read_markets(path, *, event_unit="fill"):
+def _clean_window(recv_ts, sleep_gap_s):
+    """Bounds (lo, hi) of the longest-by-event-count contiguous run of recv_ts with no internal gap
+    exceeding sleep_gap_s. A lid-sleep / recorder outage is a capture-wide recv_ts gap (no events
+    received across the whole basket at once), so the surviving run is a continuous-observation window.
+    Returns (None, None) for empty input."""
+    r = np.sort(np.asarray(recv_ts, dtype=float))
+    if r.size == 0:
+        return None, None
+    if r.size == 1:
+        return float(r[0]), float(r[0])
+    breaks = np.where(np.diff(r) > sleep_gap_s)[0]          # gap AFTER index i -> segment boundary
+    starts = np.concatenate([[0], breaks + 1])
+    ends = np.concatenate([breaks, [r.size - 1]])
+    j = int(np.argmax(ends - starts))                       # most events (ties -> earliest segment)
+    return float(r[starts[j]]), float(r[ends[j]])
+
+
+def read_markets(path, *, event_unit="fill", sleep_gap_s=None):
     """Parse B-JSONL into per-market MarketEvents.
 
     event_unit: "fill" keeps every last_trade_price; "match" collapses fills sharing an identical
-    (asset_id, ms-timestamp) into one event."""
+    (asset_id, ms-timestamp) into one event.
+    sleep_gap_s: if set, drop events outside the longest gap-free recv_ts window (excludes lid-sleep /
+    outage periods whose artificial quiet would bias n̂ downward); None = keep everything."""
     if event_unit not in ("fill", "match"):
         raise ValueError(f"event_unit must be 'fill' or 'match', got {event_unit!r}")
 
@@ -43,7 +62,8 @@ def read_markets(path, *, event_unit="fill"):
             if not line:
                 continue
             try:
-                msg = json.loads(line)["msg"]
+                obj = json.loads(line)
+                msg = obj["msg"]
             except (json.JSONDecodeError, KeyError, TypeError):
                 bad += 1
                 continue
@@ -57,9 +77,25 @@ def read_markets(path, *, event_unit="fill"):
             except (KeyError, TypeError, ValueError, OverflowError):  # OverflowError: int(float("1e999"))
                 bad += 1
                 continue
-            by_asset.setdefault(asset, []).append((ts_ms, msg.get("price")))
+            recv = obj.get("recv_ts") if isinstance(obj, dict) else None
+            by_asset.setdefault(asset, []).append((ts_ms, msg.get("price"), recv))
     if bad:
         print(f"b_reader: skipped {bad} unparseable/incomplete line(s)")
+
+    if sleep_gap_s is not None:
+        all_recv = [r[2] for rows in by_asset.values() for r in rows if r[2] is not None]
+        lo, hi = _clean_window(all_recv, sleep_gap_s) if all_recv else (None, None)
+        if lo is not None:
+            kept, dropped = {}, 0
+            for asset, rows in by_asset.items():
+                keep = [r for r in rows if r[2] is not None and lo <= r[2] <= hi]
+                dropped += len(rows) - len(keep)
+                if keep:
+                    kept[asset] = keep
+            if dropped:
+                print(f"b_reader: sleep-gap guard kept recv_ts window [{lo:.0f}, {hi:.0f}] "
+                      f"({hi - lo:.0f}s); dropped {dropped} event(s) outside it")
+            by_asset = kept
 
     markets = []
     for asset, rows in by_asset.items():
