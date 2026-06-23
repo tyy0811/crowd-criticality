@@ -1,5 +1,13 @@
 # Real-data criticality: is Polymarket near-critical, or is it non-stationarity? — consolidated arc
 
+> **⚠ SUPERSEDED (2026-06-23) — the per-market split this document asserts is RETIRED.** The four-round
+> measurement arc (`2026-06-22_arc_crossreview_round1.md` → `…round2.md` → `…tightened_verdict.md` →
+> `2026-06-23_magnitude_synthesis.md` → `…finegrid_check.md`) showed the "1 genuine / 2 mis-modelled" split
+> was an under-resolved-instrument artifact: genuine near-critical false-migrates 7–27%, and on a resolved
+> grid the real markets sit at 1.125 inside the genuine tail, not beyond it. The locked finding is the
+> resolution floor, not a split. **Current status:** `2026-06-23_per_market_criticality_DELIVERABLE.md`.
+> Read this document as the (superseded) starting point of that arc, not its conclusion.
+
 **Date:** 2026-06-22 · **Branch:** `s0.4-data-feasibility-spike` · **Status:** analysis core SETTLED;
 one downstream question (recoverability of the mis-modelled markets) explicitly OPEN. This document
 consolidates the dated writedowns (`results/s0.4_feasibility/2026-06-2*`) into one artifact — the
