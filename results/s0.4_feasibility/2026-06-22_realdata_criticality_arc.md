@@ -8,12 +8,16 @@
 > resolution floor, not a split. **Current status:** `2026-06-23_per_market_criticality_DELIVERABLE.md`.
 > Read this document as the (superseded) starting point of that arc, not its conclusion.
 
-**Date:** 2026-06-22 · **Branch:** `s0.4-data-feasibility-spike` · **Status:** analysis core SETTLED;
-one downstream question (recoverability of the mis-modelled markets) explicitly OPEN. This document
+**Date:** 2026-06-22 · **Branch:** `s0.4-data-feasibility-spike` · **Status:** SUPERSEDED (see banner) — the
+per-market split asserted below was RETIRED by the resolution-floor reading
+(`2026-06-23_per_market_criticality_DELIVERABLE.md`); read it as the arc's (superseded) starting point. This document
 consolidates the dated writedowns (`results/s0.4_feasibility/2026-06-2*`) into one artifact — the
 cross-review input and the durable record.
 
 ## Bottom line (read first)
+
+> _(RETIRED reading — preserved as the arc's starting point. The "per-market split" stated in this section was
+> overturned; the locked finding is the **resolution floor** — see the banner and the DELIVERABLE.)_
 
 On the first event-rich Source-B markets, the naive near-critical branching ratio (n̂ ≈ 0.77–0.88) is
 **not what it looks like**, and the truth is **per-market**:
@@ -75,6 +79,11 @@ Every estimator is TDD'd and every conclusion calibrated against known truth; th
 instruments correcting proxies, not instability.
 
 ## 3. The GATE (the deliverable) — a THREE-step per-market trust test
+
+> _(RETIRED verdict — superseded by the DELIVERABLE. The gate promoted to `critaudit.hawkes.gate` is the
+> grid-extension **migration step** characterized with its measured false-positive rate (15–27% at 18–35k),
+> NOT a per-market certifier; the "mis-modelled" verdict for …3503/…9630 below does not stand — they are
+> indistinguishable from genuine near-critical the instrument cannot resolve.)_
 
 A near-critical n̂ is trustworthy only if a market passes all three:
 
@@ -138,7 +147,7 @@ before committing. Until then, markets 1,2's near-criticality stays **untrustwor
 
 ## 7. Caveats
 
-- **N = 3 markets.** The per-market split (1 genuine, 2 mis-modelled) is small-sample; the capture stream
+- **N = 3 markets.** The per-market split (1 genuine, 2 mis-modelled) — **RETIRED, see DELIVERABLE** — is small-sample; the capture stream
   is ongoing validation (apply the gate to new event-rich markets as they accrue).
 - **Per-market verdicts carry single-realization noise.** MC replication of the corrected floor map shows
   genuine near-critical data false-migrates on a single fixed grid ~once in four near the boundary (an 18k

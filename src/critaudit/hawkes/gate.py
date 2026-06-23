@@ -1,10 +1,11 @@
 """Per-market near-criticality gate: profile-likelihood over the branching ratio n, maxed over a power-law
 shape grid, read under grid-extension toward the heavy-tail boundary. identified = the profile peak STAYS at
 an interior near-critical n as the eps grid opens; migrated = it runs to the supercritical boundary. The
-s-cached profile_ll is bit-equal to mu_t.fit_mu_only (verified |Δ|=0) and is the speed the gate rides on.
-FROZEN PARAMETERS below are the gate's spec. The measured specificity — genuine near-critical under a rate
-ramp false-migrates 7-27%, does NOT clear 10% in 18-100k -> per-market near-criticality not resolvable at
-achievable Polymarket event counts — is the locked acceptance characterization (tests/test_gate_specificity.py
+s-cached profile_ll is bit-equal to mu_t.fit_mu_only (was |Δ|=0; golden-guarded at <1e-3) and is the speed
+the gate rides on. FROZEN PARAMETERS below are the gate's spec. The measured specificity — genuine
+near-critical under a rate ramp false-migrates 15-27% per-market at 18-35k (N-matched), and out to 100k stays
+in a ~7-17% band with no firm sub-10% N-trend (the 100k CI straddles 10%) -> per-market near-criticality not
+resolvable at achievable Polymarket event counts — is the locked acceptance characterization (tests/test_gate_specificity.py
 + results/s0.4_feasibility/2026-06-23_per_market_criticality_DELIVERABLE.md).
 """
 from __future__ import annotations

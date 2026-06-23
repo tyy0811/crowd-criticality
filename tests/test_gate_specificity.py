@@ -2,12 +2,13 @@
 RAMPED regime that produces it (a STATIONARY cohort would show 0 migrations and test nothing).
 
 Reference (measured, not asserted here): genuine near-critical (n=0.90) under a rate ramp false-migrates
-7-27% and does NOT clear 10% anywhere in 18-100k, so per-market near-criticality is not separable from
-apparent near-criticality at achievable Polymarket event counts. Full numbers + the four-round derivation
+15-27% per-market at 18-35k (N-matched), and out to 100k stays in a ~7-17% band with no firm sub-10% trend
+(the 100k CI straddles 10%), so per-market near-criticality is not separable from apparent near-criticality
+at achievable Polymarket event counts. Full numbers + the four-round derivation
 (and an UNTESTED open thread on whether the floor depends on ramp steepness independent of N — suggestive but
 under-powered + confounded, NOT a finding): results/s0.4_feasibility/2026-06-23_per_market_criticality_DELIVERABLE.md.
 The spike driver that reproduces the rate at scale: spike/s0.4/mac/convergent_migration_cal.py
-(--tight / --finegrid / --nprobe). A 16-seed cohort cannot lock a 7-27% RATE (binomial noise) — so the rate
+(--tight / --finegrid / --nprobe). A 16-seed cohort cannot lock a 15-27% RATE (binomial noise) — so the rate
 stays in the DELIVERABLE and the package locks the QUALITATIVE property: present, a minority, and mild.
 
 Recorded + margin-tested 2026-06-23 at the frozen regime (simulate_ramp(0.90, 32760, 0.0142, 0.35, 1.7, 11.0,
