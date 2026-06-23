@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from critaudit.hawkes.binned import ExpKernel, PowerLawKernel, _nll, fit_binned, fit_full, certify_granularity
 from critaudit.generators.hawkes_sim import simulate
@@ -26,6 +27,7 @@ def test_nll_prefers_true_branching_ratio():
     assert np.isfinite(nll_true) and nll_true < nll_wrong
 
 
+@pytest.mark.slow
 def test_fit_binned_smoke_recovers_in_range():
     # Small-config smoke: the production estimator runs end-to-end and recovers n in a plausible band
     # (binned-Poisson would read ~0.9 here). Tight recovery is validated at scale in stage1.
@@ -39,6 +41,7 @@ def test_fit_binned_smoke_recovers_in_range():
     assert len(fit.trajectory) == 10
 
 
+@pytest.mark.slow
 def test_certify_granularity_runs():
     # The certification harness: full-timing n̂ vs binned-MCEM n̂. On real source-B data (sub-2 s match
     # timestamps) this IS the real-data granularity certification. Smoke: runs and returns a consistent cert.
@@ -57,6 +60,7 @@ def test_powerlaw_generator_residuals_are_exp1():
     assert t.size > 1000
 
 
+@pytest.mark.slow
 def test_fit_full_matches_certify_granularity_n_full():
     # The gate must judge the EXACT fit the cert reports -> fit_full's n == certify's n_full, bit-for-bit.
     t = powerlaw_hawkes.simulate(0.6, 600.0, 0.4, 0.4, 0.5, np.random.default_rng(0))
@@ -77,6 +81,7 @@ def test_fit_full_tolerates_ms_ties():
     assert 0.0 < n < 1.0 and mu > 0.0
 
 
+@pytest.mark.slow
 def test_certify_granularity_accepts_precomputed_n_full():
     # The driver already has n_full from fit_full; passing it in must skip the second full MLE and give
     # a bit-identical cert vs recomputing (deterministic fit_full).

@@ -1,9 +1,11 @@
 import numpy as np
+import pytest
 from critaudit.generators.hawkes_sim import simulate
 from critaudit.hawkes.mle import fit
 from critaudit.hawkes.residuals import rescaled_residuals
 
 
+@pytest.mark.slow
 def test_wellspecified_not_rejected():
     es = simulate(0.6, 4000.0, mu=0.6, beta=1.0, backend="thinning",
                   rng=np.random.default_rng(10))

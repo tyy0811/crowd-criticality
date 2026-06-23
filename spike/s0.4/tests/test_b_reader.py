@@ -77,6 +77,49 @@ def test_dup_price_consecutive_count(tmp_path):
     assert m.n_dup_price_consecutive == 1              # the 2nd 0.5 repeats the 1st
 
 
+def test_clean_window_picks_largest_event_run():
+    from b_reader import _clean_window
+    # three segments split by big recv_ts gaps; the middle run has the most events -> its bounds win.
+    rt = np.array([0.0, 1, 2,                  # seg A: 3 events
+                   100, 101, 102, 103, 104,    # seg B: 5 events (largest)
+                   300, 301])                  # seg C: 2 events
+    assert _clean_window(rt, sleep_gap_s=50.0) == (100.0, 104.0)
+
+
+def test_clean_window_no_gaps_returns_full_span():
+    from b_reader import _clean_window
+    rt = np.array([10.0, 11, 12, 13])
+    assert _clean_window(rt, sleep_gap_s=50.0) == (10.0, 13.0)
+
+
+def test_sleep_gap_guard_drops_contaminated_events(tmp_path):
+    # A lid-sleep is a capture-wide recv_ts gap. With sleep_gap_s set, events in/before the gap are
+    # dropped and only the clean post-gap run survives, re-zero-based on its own server ts.
+    t0 = 1_700_000_000_000
+    lines = [_rec("A", t0 + 0,     recv=0.0),      # pre-gap (2 events)
+             _rec("A", t0 + 1000,  recv=1.0),
+             _rec("A", t0 + 10000, recv=500.0),    # post-gap (3 events) -- recv jumps 1->500 = sleep
+             _rec("A", t0 + 11000, recv=501.0),
+             _rec("A", t0 + 12000, recv=502.0)]
+    path = _write(tmp_path, lines)
+    (m,) = read_markets(path, sleep_gap_s=60.0)
+    assert m.n_events == 3
+    np.testing.assert_allclose(m.times, [0.0, 1.0, 2.0])   # zero-based on first POST-gap server ts
+
+
+def test_no_sleep_guard_by_default_keeps_all(tmp_path):
+    # sleep_gap_s=None (default) -> no guarding, every event kept across the recv gap (back-compat).
+    t0 = 1_700_000_000_000
+    lines = [_rec("A", t0 + 0,     recv=0.0),
+             _rec("A", t0 + 1000,  recv=1.0),
+             _rec("A", t0 + 10000, recv=500.0),
+             _rec("A", t0 + 11000, recv=501.0),
+             _rec("A", t0 + 12000, recv=502.0)]
+    path = _write(tmp_path, lines)
+    (m,) = read_markets(path)
+    assert m.n_events == 5
+
+
 def test_skips_overflow_timestamp_and_unhashable_asset(tmp_path):
     # #7: JSON-valid but pathological records must be SKIPPED, not crash the reader. int(float("1e999"))
     # raises OverflowError; an unhashable/non-string asset_id breaks the per-asset dict.

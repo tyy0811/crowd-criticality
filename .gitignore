@@ -24,3 +24,8 @@ htmlcov/
 # Project artifacts (writedowns are committed selectively, not bulk-ignored)
 results/**/*.tmp
 *.log
+
+# Private planning / internal process docs — kept local, not tracked
+docs/superpowers/plans/
+docs/superpowers/specs/
+docs/superpowers/HANDOFF-*.md

@@ -3,6 +3,7 @@ import numpy as np, pytest
 from critaudit.validation.gate0a import run_gate0a
 
 
+@pytest.mark.slow
 def test_gate0a_plumbing_fast(tmp_path):
     # Small-N PLUMBING test: assert the harness wires end-to-end and emits a well-formed
     # report + writedown. The science verdicts (pure_powerlaw passes A.1, csn_killer

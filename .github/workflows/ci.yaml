@@ -1,11 +1,31 @@
 name: ci
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref (don't pile up on rapid pushes).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false               # see every version's result, not just the first failure
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]   # pyproject declares requires-python >=3.9
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - run: python -m pip install -e ".[dev]"
+      # Fast path only: the `slow` characterizations (gate specificity, etc.) are excluded by the
+      # pyproject marker — they are environment-sensitive (optimizer/RNG-pinned goldens) and validated
+      # offline, not in CI. The package's fast tests prove the code is correct and runs (and are API-key-free).
       - run: pytest -m "not slow" -q
