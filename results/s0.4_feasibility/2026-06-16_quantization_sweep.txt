@@ -1,0 +1,14 @@
+=== hawkes simulate sanity (n=0.6, backend=thinning) ===
+  N=3153 rate=1.5765 expected=1.5000
+=== S0.4 quantization-bias sweep (grid=2.0 s, n_true=0.6) ===
+timescale(s)     beta  #real  clean_bias  quant_bias  tie_frac
+       0.250   4.0000      8      0.0127      0.1539     0.754
+       0.500   2.0000      8      0.0115      0.1420     0.742
+       1.000   1.0000      8      0.0191      0.1278     0.728
+       2.000   0.5000      8      0.0297      0.1136     0.714
+       4.000   0.2500      8      0.0211      0.1111     0.706
+       8.000   0.1250      8      0.0372      0.0998     0.700
+      16.000   0.0625      8      0.0542      0.0942     0.694
+
+T_threshold = inf s  (quantization benign for resolvable kernel timescale >= T_threshold; |n̂-n| < 0.05)
+Interpretation: the offsite reconstruction measures the market's RESOLVABLE kernel timescale (1/β̂ from the 2 s data). If it is safely >= T_threshold, the resolvable component is granularity-safe; any sub-2 s component is UNMEASURABLE and is flagged, never assumed benign.
