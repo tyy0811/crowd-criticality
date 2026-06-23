@@ -5,6 +5,7 @@ from critaudit.hawkes.mle import fit
 from critaudit.types import EventStream
 
 
+@pytest.mark.slow
 def test_recovers_planted_n():
     es = simulate(0.5, 4000.0, mu=0.6, beta=1.0, backend="thinning",
                   rng=np.random.default_rng(7))
@@ -13,6 +14,7 @@ def test_recovers_planted_n():
     assert f.mu > 0 and f.beta > 0
 
 
+@pytest.mark.slow
 def test_unconstrained_n_positive():
     es = simulate(0.9, 3000.0, mu=0.6, beta=1.0, backend="cluster",
                   rng=np.random.default_rng(8))
@@ -20,6 +22,7 @@ def test_unconstrained_n_positive():
     assert f.n > 0  # optimizer does not impose n < 1
 
 
+@pytest.mark.slow
 def test_profile_ci_contains_planted_n():
     es = simulate(0.5, 5000.0, mu=0.6, beta=1.0, backend="thinning",
                   rng=np.random.default_rng(9))

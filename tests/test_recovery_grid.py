@@ -2,6 +2,7 @@ import numpy as np, pytest
 from critaudit.experiments.recovery_grid import coverage_cell
 
 
+@pytest.mark.slow
 def test_coverage_cell_structure_fast():
     out = coverage_cell(0.5, 1200, R=4, base_seed=0)
     assert 0.0 <= out["coverage"] <= 1.0
@@ -19,6 +20,7 @@ from critaudit.hawkes.mle import fit
 from critaudit.experiments.recovery_grid import bootstrap_ci, profile_bootstrap_audit
 
 
+@pytest.mark.slow
 def test_bootstrap_ci_brackets_point_estimate():
     es = simulate(0.5, 4000.0, mu=0.6, beta=1.0, backend="thinning",
                   rng=np.random.default_rng(0))

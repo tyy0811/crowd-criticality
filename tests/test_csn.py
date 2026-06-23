@@ -1,7 +1,9 @@
 import numpy as np, powerlaw
+import pytest
 from critaudit.powerlaw.csn import fit_powerlaw
 
 
+@pytest.mark.slow
 def test_recovers_exponent_and_passes():
     np.random.seed(0)  # powerlaw.generate_random draws from numpy's GLOBAL RNG — seed it for determinism
     x = powerlaw.Power_Law(xmin=1, parameters=[2.5], discrete=True).generate_random(5000)
@@ -10,6 +12,7 @@ def test_recovers_exponent_and_passes():
     assert f.passes is True
 
 
+@pytest.mark.slow
 def test_truncated_sample_fails_via_lrt():
     np.random.seed(1)  # powerlaw.generate_random draws from numpy's GLOBAL RNG — seed it for determinism
     rng = np.random.default_rng(1)
