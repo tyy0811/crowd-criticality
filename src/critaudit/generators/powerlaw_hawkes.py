@@ -45,3 +45,23 @@ def rescaled_times(times, mu, n, eps, c):
         past = t[:i]
         Lam[i] = mu * t[i] + np.sum(n * (1.0 - (c / (c + t[i] - past)) ** eps))
     return Lam
+
+
+def simulate_ramp(n, horizon, mu0, eps, c, ramp, rng, max_events=500_000):
+    """Power-law Hawkes with a LINEAR-ramp immigration rate mu(t) = mu0*(1 + ramp*t/horizon) (end/start
+    swing = 1+ramp). Offspring delays ~ Lomax(eps, c), as in `simulate`. The non-stationarity a smooth
+    mu(t) fit must absorb; `ramp=0` reduces to the stationary `simulate` immigration. Sorted times."""
+    mu_max = mu0 * (1.0 + max(ramp, 0.0))
+    cand = rng.uniform(0.0, horizon, rng.poisson(mu_max * horizon))
+    imm = cand[rng.uniform(0.0, 1.0, cand.size) < (mu0 * (1.0 + ramp * cand / horizon)) / mu_max]
+    times, queue = list(imm), list(imm)
+    while queue:
+        p = queue.pop()
+        k = int(rng.poisson(n))
+        if k:
+            for ct in p + c * ((1.0 - rng.uniform(0.0, 1.0, k)) ** (-1.0 / eps) - 1.0):
+                if ct < horizon:
+                    times.append(ct); queue.append(ct)
+        if len(times) > max_events:
+            raise RuntimeError("event explosion — check n < 1")   # raise, matching `simulate` (not a silent truncate)
+    return np.sort(np.asarray(times, float))
