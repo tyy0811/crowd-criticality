@@ -4,8 +4,8 @@ market regime the recovery does NOT clear — a #3-recoverability FINDING (logge
 as a PASSING characterization so it cannot silently drift back to a 'just lower the threshold' fix.
 Mechanism: infinite-mean Lomax delays make a cascade temporally scale-free (one tree smears across most
 of the horizon; ~92% of events sit inside a foreign tree's span), so trees overlap at any immigrant rate
-and timing alone cannot recover them. Lightening the tail restores recoverability — isolating the tail,
-not the extractor, as the cause."""
+and timing alone cannot recover them. Lightening the tail (on a bracketing grid) restores recoverability —
+showing the heavy tail is a necessary driver of the block, not an extractor defect."""
 import numpy as np
 import pytest
 from critaudit.cascades.calibrate import adjusted_rand, recover_tau_q, REGIME
@@ -23,16 +23,20 @@ def test_adjusted_rand_basics():
 
 
 @pytest.mark.slow
-def test_tau_q_recovery_blocked_on_heavy_tail_and_the_tail_is_the_cause():
+def test_tau_q_recovery_blocked_on_heavy_tail_restored_by_lighter_tail():
     # THE #3-RECOVERABILITY FINDING, locked as a passing characterization. Deterministic seed.
     # (1) Heavy-tail market regime (eps=0.35, infinite-mean Lomax): timing-only recovery does NOT clear.
     heavy = recover_tau_q(np.random.default_rng(20260623), regime=REGIME)        # frozen spec grid
+    assert heavy["used_seeds"] >= 10        # the verdict is real measurement, NOT an all-skipped 0.0 surface
     assert heavy["cleared"] is False
     assert max(heavy["per_k_ari"].values()) < 0.65          # far below RECOVERY_THRESHOLD (measured ~0.43)
 
-    # (2) The cause is the TAIL, not the extractor: a finite-mean tail (eps=2.0, compact trees) recovers
-    # cleanly once the grid brackets its scale. Same harness, same generator — only eps changes.
+    # (2) Lightening the tail RESTORES recovery -> the heavy tail is a NECESSARY driver of the block (not an
+    # extractor defect). NB this control varies BOTH eps AND grid (eps=2.0 + the bracketing _CONTROL_GRID);
+    # on the FROZEN grid nothing clears at any tail (even eps=3.0 -> 0.880). So it shows "compact tail +
+    # bracketing grid recovers", not "tail alone" (see DECISIONS 2026-06-24).
     light = recover_tau_q(np.random.default_rng(20260623), regime=dict(REGIME, eps=2.0), grid=_CONTROL_GRID)
+    assert light["used_seeds"] >= 10
     assert light["cleared"] is True
     assert max(light["per_k_ari"].values()) >= spec.RECOVERY_THRESHOLD   # measured ~0.99
 

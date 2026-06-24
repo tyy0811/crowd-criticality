@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from critaudit.cascades import spec
 
 
@@ -8,9 +9,10 @@ def test_frozen_spec_surface():
     assert spec.MERGE_POLICY.single_membership is True
     assert spec.MERGE_POLICY.merge_within_definition is False
     assert spec.MERGE_POLICY.bin_edge == "left-closed"
-    assert len(spec.TAU_Q_GRID) >= 6 and spec.TAU_Q_GRID[0] < spec.TAU_Q_GRID[-1]
-    # TAU_Q_K is None until Task 5's result-blind recovery freezes it.
-    assert spec.TAU_Q_K is None or (0.0 < spec.TAU_Q_K)
+    assert spec.TAU_Q_GRID == (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0)   # pinned EXACTLY (fast-CI lock)
+    # #3 is calibration-BLOCKED on the market regime (DECISIONS 2026-06-24): the knob stays None, locked
+    # in the FAST suite so a future freeze can't slip through CI (which runs `-m "not slow"`).
+    assert spec.TAU_Q_K is None
 
 
 from critaudit.cascades.ground_truth import labeled_stream
@@ -95,3 +97,31 @@ def test_belief_update_bridge_is_calibration_blocked_but_plumbing_sound():
     tau, alpha, inv = exponents(av)
     assert np.isfinite(tau) and np.isfinite(alpha)    # the #3 -> scaling bridge is wired; only the knob is unfrozen
     assert av.sizes.min() >= 1 and av.durations.min() >= 1
+
+
+def test_merge_policy_is_load_bearing_not_decorative(monkeypatch):
+    # MERGE_POLICY must GOVERN binning, not just describe it: an unimplemented policy must RAISE, so the
+    # frozen constant can never silently disagree with the executed binning (review 2026-06-24).
+    t = np.array([0.0, 1.0, 2.0, 3.0])
+    monkeypatch.setattr(spec, "MERGE_POLICY",
+                        spec.MergePolicy(single_membership=True, merge_within_definition=False, bin_edge="right-closed"))
+    with pytest.raises(NotImplementedError):
+        _avalanche_labels(t, dt=2.0)
+    monkeypatch.setattr(spec, "MERGE_POLICY",
+                        spec.MergePolicy(single_membership=False, merge_within_definition=False, bin_edge="left-closed"))
+    with pytest.raises(NotImplementedError):
+        _avalanche_labels(t, dt=2.0)
+
+
+def test_binning_fails_closed_on_degenerate_inputs():
+    # #3 binning must FAIL LOUD on degenerate input, not silently emit a wrong AvalancheSet (review 2026-06-24).
+    t = np.array([0.0, 1.0, 2.0])
+    for bad in (0.0, -1.0, np.nan, np.inf):
+        with pytest.raises(ValueError):
+            _avalanche_labels(t, dt=bad)
+    assert _avalanche_labels(np.array([]), dt=1.0).size == 0          # empty -> no avalanches (defined)
+    with pytest.raises(ValueError):                                  # < 2 events -> no gap to rate-normalize
+        bin_width(np.array([5.0]), 1.0)
+    tied = np.array([2.0, 2.0, 2.0])                                 # tied timestamps -> width 0 -> rejected downstream
+    with pytest.raises(ValueError):
+        _avalanche_labels(tied, dt=bin_width(tied, 1.0))

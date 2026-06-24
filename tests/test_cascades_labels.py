@@ -28,3 +28,30 @@ def test_simulate_labeled_well_formed():
         while parent[j] >= 0:
             j = parent[j]
         assert root[i] == j
+
+
+def test_simulate_labeled_rng_state_identical_after_call():
+    # STRONGER than output equality: the post-call RNG STATE must match -> simulate_labeled consumes the
+    # EXACT same draws as simulate (no label-only draw AFTER t_lab is produced, which array_equal on the
+    # time stream alone would miss). review 2026-06-24.
+    for seed in (0, 1, 42):
+        a = np.random.default_rng(seed)
+        b = np.random.default_rng(seed)
+        simulate(0.92, 8000.0, 0.05, 0.35, 1.7, a)
+        simulate_labeled(0.92, 8000.0, 0.05, 0.35, 1.7, b)
+        assert a.bit_generator.state == b.bit_generator.state     # identical TOTAL rng consumption
+        assert a.random() == b.random()                           # and the next draw agrees
+
+
+def test_simulate_labeled_rng_identical_on_edge_regimes():
+    # Zero-immigrant (tiny mu) and c=0 (degenerate/tied offspring delays) still consume the rng
+    # IDENTICALLY -> array_equal + state match where empties/ties could hide a perturbation. review.
+    base = dict(n=0.8, horizon=3000.0, mu=0.05, eps=0.35, c=1.7)
+    for override in (dict(mu=1e-9), dict(c=0.0)):
+        kw = {**base, **override}
+        a = np.random.default_rng(5)
+        b = np.random.default_rng(5)
+        t_plain = simulate(kw["n"], kw["horizon"], kw["mu"], kw["eps"], kw["c"], a)
+        t_lab, root, parent = simulate_labeled(kw["n"], kw["horizon"], kw["mu"], kw["eps"], kw["c"], b)
+        assert np.array_equal(t_plain, t_lab)
+        assert a.bit_generator.state == b.bit_generator.state

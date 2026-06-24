@@ -31,20 +31,26 @@ def adjusted_rand(a, b):
 
 def recover_tau_q(rng, regime=REGIME, seeds=SEEDS, grid=None):
     """Mean ARI(timing-only #3 membership, tree root_id) per k over `seeds` separable streams; argmax k
-    is the result-blind TAU_Q_K. Returns per_k_ari, best_k, cleared (vs spec.RECOVERY_THRESHOLD)."""
+    is the result-blind TAU_Q_K. Returns per_k_ari, best_k, cleared (vs spec.RECOVERY_THRESHOLD), and
+    used_seeds — the count of streams that met the >=200-event floor and actually contributed. used_seeds
+    guards the verdict: if every stream is skipped, per_k stays empty and the `or 0.0` fallback would
+    fabricate a uniform-0.0 surface indistinguishable from a real recovery failure, so callers must check
+    used_seeds before trusting a `cleared=False`."""
     grid = spec.TAU_Q_GRID if grid is None else grid
     ss = np.random.SeedSequence(int(rng.integers(0, 2**32 - 1))).spawn(seeds)
     per_k = {k: [] for k in grid}
+    used = 0
     for s in ss:
         r = np.random.default_rng(s)
         t, ibu, root, _ = labeled_stream(regime["n"], regime["horizon"], regime["mu"],
                                          regime["eps"], regime["c"], r)
         if t.size < 200:
             continue
+        used += 1
         for k in grid:
             lab = _avalanche_labels(t, bin_width(t, k))     # t already time-sorted
             per_k[k].append(adjusted_rand(lab, root))
     per_k_ari = {k: (float(np.mean(v)) if v else 0.0) for k, v in per_k.items()}
     best_k = max(per_k_ari, key=per_k_ari.get)
     return {"per_k_ari": per_k_ari, "best_k": best_k,
-            "cleared": per_k_ari[best_k] >= spec.RECOVERY_THRESHOLD}
+            "cleared": per_k_ari[best_k] >= spec.RECOVERY_THRESHOLD, "used_seeds": used}
