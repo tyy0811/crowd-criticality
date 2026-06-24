@@ -65,3 +65,40 @@ def simulate_ramp(n, horizon, mu0, eps, c, ramp, rng, max_events=500_000):
         if len(times) > max_events:
             raise RuntimeError("event explosion — check n < 1")   # raise, matching `simulate` (not a silent truncate)
     return np.sort(np.asarray(times, float))
+
+
+def simulate_labeled(n, horizon, mu, eps, c, rng, max_events=500_000):
+    """Label-emitting twin of `simulate`: IDENTICAL rng stream + sorted times, PLUS each event's root
+    (immigrant) id and parent index, both in sorted-space (immigrants have parent_idx = -1). The
+    bookkeeping adds no rng draws, so for a given seed simulate_labeled(...)[0] is np.array_equal to
+    simulate(...). Used to build Gate-D cascade ground truth (the mechanical parent->offspring tree)."""
+    if rng is None:
+        raise ValueError("pass an explicit numpy Generator as rng")
+    n_imm = int(rng.poisson(mu * horizon))
+    times = list(rng.uniform(0.0, horizon, size=n_imm))
+    root = list(range(n_imm))           # immigrant i is its own root (generation-order index)
+    parent = [-1] * n_imm               # immigrants have no parent
+    queue = list(range(n_imm))          # INDICES, LIFO — same processing order as simulate's value-queue
+    while queue:
+        pidx = queue.pop()
+        k = int(rng.poisson(n))
+        if k:
+            u = rng.uniform(0.0, 1.0, size=k)
+            for d in c * ((1.0 - u) ** (-1.0 / eps) - 1.0):
+                ct = times[pidx] + float(d)
+                if ct < horizon:
+                    cidx = len(times)
+                    times.append(ct)
+                    root.append(root[pidx])
+                    parent.append(pidx)
+                    queue.append(cidx)
+        if len(times) > max_events:
+            raise RuntimeError("event explosion — check n < 1")
+    t = np.asarray(times, dtype=float)
+    order = np.argsort(t, kind="stable")               # generation-order -> time-sorted
+    inv = np.empty(t.size, dtype=np.int64)
+    inv[order] = np.arange(t.size)                     # old gen-index -> new sorted-index
+    pg = np.asarray(parent, dtype=np.int64)[order]
+    parent_sorted = np.where(pg < 0, -1, inv[np.where(pg < 0, 0, pg)])
+    root_sorted = inv[np.asarray(root, dtype=np.int64)[order]]
+    return t[order], root_sorted, parent_sorted
