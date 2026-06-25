@@ -55,3 +55,34 @@ def n_struct(av):
         raise ValueError("n_struct needs >= 1 event")
     n_roots = int(av.sizes.size)
     return 1.0 - n_roots / n_events
+
+
+def burstiness(times):
+    """Burstiness B = (σ-μ)/(σ+μ) of inter-event gaps (Goh-Barabási). Regular -> -1, Poisson -> ~0,
+    bursty -> ~1. A single-moment-ratio summary; routes through NO self-excitation fit, so it is a
+    candidate observable not defeated by the heavy tail. < 3 events -> nan."""
+    t = np.sort(np.asarray(times, dtype=float))
+    if t.size < 3:
+        return float("nan")
+    dt = np.diff(t)
+    mu, sigma = float(dt.mean()), float(dt.std())
+    denom = sigma + mu
+    return (sigma - mu) / denom if denom > 0 else float("nan")
+
+
+def fano_profile(times, horizon, window_sizes):
+    """Scale-resolved Fano factor F(T) = Var(count)/Mean(count) over fixed windows of size T, one entry
+    per T in window_sizes. Poisson -> F≈1 at all scales; clustering inflates F and may grow with T,
+    showing WHERE in timescale the clustering lives (diagnostic about temporal non-compactness itself).
+    Routes through no fit. A window size yielding < 2 bins -> nan for that scale."""
+    t = np.sort(np.asarray(times, dtype=float))
+    out = []
+    for T in window_sizes:
+        nb = int(np.floor(horizon / T))
+        if nb < 2:
+            out.append(float("nan"))
+            continue
+        counts, _ = np.histogram(t, bins=np.arange(nb + 1) * T)
+        m = float(counts.mean())
+        out.append(float(counts.var() / m) if m > 0 else float("nan"))
+    return np.asarray(out, dtype=float)
