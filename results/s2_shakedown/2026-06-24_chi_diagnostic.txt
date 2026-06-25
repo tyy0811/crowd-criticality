@@ -1,0 +1,11 @@
+CONTROLLED chi-vs-eps sweep (mu_news=2.0 FIXED, N=400, horizon=1500.0, 8 seeds; CENSORED generator)
+    eps |    chi mean     chi std | n_tree mean
+--------------------------------------------------------
+  0.040 |    2.04e-04    6.93e-05 |       0.318
+  0.080 |    1.39e-04    3.77e-05 |       0.641
+  0.134 |    1.50e-04    8.98e-05 |       1.249  <-- eps_crit
+  0.200 |    1.38e-04    1.15e-04 |       1.882
+  0.300 |    1.34e-04    7.72e-05 |       2.724
+--------------------------------------------------------
+chi(eps_crit) mean = 1.50e-04;  max chi over the grid at eps = 0.040  (a true susceptibility would peak AT eps_crit)
+chi(eps_crit) / mean(chi at other eps) = 0.98  (>> 1 for a resolved peak; ~1 here -> no peak)
