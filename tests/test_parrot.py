@@ -1,5 +1,15 @@
+import numpy as np
+
 from critaudit.sim.controls import parrot_spec as ps
 from critaudit.sim.controls import spec as cs
+from critaudit.sim.controls.parrot import simulate_parrot
+
+
+def _parrot(seed, **over):
+    kw = dict(horizon=200.0, mu_news=0.5, N=80, k_reach=4, mu_step=0.5,
+              kernel_eps=0.35, c=1.7, rng=np.random.default_rng(seed))
+    kw.update(over)
+    return simulate_parrot(**kw)
 
 
 def test_parrot_spec_frozen_surface():
@@ -18,3 +28,20 @@ def test_parrot_spec_frozen_surface():
     assert ps.FANO_NULL_LO < 1.0 < ps.FANO_NULL_HI  # Poisson F≈1 band
     assert ps.N_EMIT_REF_MIN > 0.0               # coupled CRIT n_emit crosses toward 1
     assert len(ps.FANO_WINDOW_SIZES) >= 2         # scale-resolved
+
+
+def test_parrot_collapses_to_immigrant_only():
+    run = _parrot(1)
+    assert run.times.size > 0                         # the news driver still fires
+    assert run.successes == 0                         # no |Δx|<eps success ever fires (collapse)
+    assert np.all(run.parent_idx == -1)               # every event is an immigrant (no offspring edge)
+    assert np.array_equal(run.root_id, np.arange(run.times.size))  # each event its own root
+    assert np.all(np.diff(run.times) > 0)             # sorted, strictly increasing
+
+
+def test_parrot_is_deterministic_under_seed():
+    a = _parrot(7)
+    b = _parrot(7)
+    assert np.array_equal(a.times, b.times)
+    assert np.array_equal(a.parent_idx, b.parent_idx)
+    assert a.successes == b.successes == 0
