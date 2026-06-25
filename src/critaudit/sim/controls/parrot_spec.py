@@ -39,6 +39,11 @@ FANO_NULL_LO = 0.60            # Poisson: F≈1 at all scales; frozen finite-sam
 FANO_NULL_HI = 1.60            # ... upper edge
 
 # --- coupled-reference contrast (separation = the trivial-but-confirming instrument-discovery readout) ---
+# The coupled τ-arm separation rides the THEORY-ANCHORED τ-band (mean-field 3/2), the criterion incr-3
+# actually anchored (test_shakedown_discrim::test_crit_tau_corroborates_criticality). The CSN strict
+# .passes / p_boot is RECORDED-NOT-ASSERTED — incr-3 disclaims it as a budget knob, and the full-shape
+# Clauset bootstrap rejects the known-critical coupled CRIT (finite-size cutoff != PURE power law) despite
+# a near-perfect exponent. See the 2026-06-25 DECISIONS entry (freeze-correction + scoped GoF finding).
 N_EMIT_REF_MIN = 0.70          # n_emit(coupled CRIT) ≈ 1.3 in incr-3; crosses toward 1
 TAU_TARGET = cs.TAU_TARGET     # 1.5
 TAU_TOL = cs.TAU_TOL           # 0.30
