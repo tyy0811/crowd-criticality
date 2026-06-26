@@ -77,3 +77,41 @@ is therefore sourced from the controlled sweep, not from any cohort-specific χ 
 **Cost if the check hadn't existed.** χ would have been carried as a working susceptibility/critical-point
 locator into the §4f sweep, where it would have been used to locate criticality it cannot actually locate —
 a silent dependency on a noise-only observable.
+
+---
+
+## 2026-06-25 — Parrot-null: a frozen @slow criterion was mis-pedigreed against its own cited source
+
+**What the check found.** The parrot-null @slow null-confirmation cohort froze
+`assert res.coupled.tau_passes is True` for the coupled CRIT reference, citing design-doc §7's claim that
+the coupled CRIT shows CSN `.passes` as "the incr-3 anchor." On the first full-substrate run the criterion
+did **not** clear: the coupled CRIT had a near-perfect exponent (τ ≈ 1.5, dead-on mean-field 3/2) but
+`p_boot → 0` → `.passes` False.
+
+**Root cause (two layers, held apart).** (1) **Pedigree.** Increment-3's
+`test_shakedown_discrim::test_crit_tau_corroborates_criticality` asserts **only** `|τ − TAU_TARGET| ≤ TAU_TOL`
+on CRIT and states explicitly (lines 10–14) that the CSN `p_boot`/`.passes` bootstrap "is **NOT** part of any
+frozen criterion — a BUDGET knob, not a result threshold." So the freeze manufactured a criterion its cited
+pedigree never established — it failed "pedigree ≠ measurement." (2) **Phenomenon.** The strict full-shape
+Clauset bootstrap rejects a *genuinely-critical* avalanche distribution at the right exponent because the
+finite-size cutoff (max avalanche size ~ population N) is a real departure from a PURE power law — reproduced
+on increment-3's own CRIT plant under the production bootstrap.
+
+**Fix.** Reframed the coupled-side separation onto the theory-anchored τ-band (`TAU_TARGET`/`TAU_TOL`, which
+incr-3 *did* anchor); the coupled CRIT clears it dead-center (|Δ| ≈ 0.007 vs 0.30). `.passes`/`p_boot`
+demoted to recorded-not-asserted (exactly as incr-3 treats `p_boot`). **NOT a relaxation** — the direction is
+the tell: a relaxation widens a tolerance toward a borderline result; this dropped a mis-pedigreed binary and
+kept the *stronger-pedigree* band the result sits dead-center of. The GoF phenomenon was banked as a scoped
+finding (DECISIONS 2026-06-25), explicitly: `p_boot`-strict is the wrong instrument for *exponent-criticality*
+(τ-band is) — NOT a verdict it is unreliable for "is this a clean power law over its fitted range," where the
+cutoff IS a real departure it correctly catches. A two-pass review (`/code-review` workflow + Codex) later
+independently confirmed the correction is legitimate, and surfaced a sibling case
+(`N_EMIT_REF_MIN`'s "≈1.3 in incr-3" was prose-corroboration, not a test-locked anchor — re-grounded on
+theory: m0=1 at EPS_CRIT, floor = `N_TREE_SUB`).
+
+**Cost if the check hadn't existed.** Had the design-doc §7 `.passes` claim been carried unexamined (or had
+the criterion been quietly relaxed to pass), the rig would have either banked a vacuous criterion or, worse,
+masked the real phenomenon — that the project's own strict GoF gate rejects a known-critical reference at the
+correct exponent. The freeze-discipline (write the criterion result-blind, then refuse to relax it when it
+fires) is exactly what converted a mis-frozen assertion into a provenance correction plus a banked,
+scope-bounded finding instead of a silent green test.
