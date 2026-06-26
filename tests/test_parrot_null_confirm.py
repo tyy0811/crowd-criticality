@@ -34,16 +34,26 @@ def test_artifact_test_null_confirmation(res):
     assert np.isfinite(res.coupled.tau)
     assert abs(res.coupled.tau - ps.TAU_TARGET) <= ps.TAU_TOL    # coupled CRIT τ ≈ 3/2 (incr-3 anchor)
 
-    # The strict CSN .passes / p_boot are RECORDED-NOT-ASSERTED here, exactly as increment-3 treats p_boot
-    # (a budget knob, never a frozen threshold — test_shakedown_discrim lines 10-14). The full-shape Clauset
-    # bootstrap REJECTS the coupled CRIT (p_boot -> 0, .passes False) DESPITE the near-perfect exponent,
-    # because a critical-branching avalanche distribution carries a finite-size cutoff (max size ~ N) that is
-    # a genuine departure from a PURE power law. SCOPE: this means p_boot-strict is the wrong instrument for
-    # "is the exponent critical" (the τ-band is the right one) — it is NOT evidence the gate is unreliable for
-    # "is this a clean power law over its fitted range." We assert only well-formedness, never a value.
-    for c in (res.coupled, res.parrot):
-        assert isinstance(c.tau_passes, bool)
-    assert np.isfinite(res.coupled.p_boot) and np.isnan(res.parrot.p_boot)
+    # crackling arm (frozen design §7 col 1): undefined (nan) on the degenerate null; on the coupled CRIT
+    # the duration exponent α is computed (the Δ residual / 1/σνz curvature may be nan when the coarse
+    # estimator is undersampled — well-formedness only, no frozen threshold).
+    assert np.isnan(res.parrot.alpha) and np.isnan(res.parrot.inv_snz) and np.isnan(res.parrot.crackling_delta)
+    assert np.isfinite(res.coupled.alpha)
+    for v in (res.coupled.inv_snz, res.coupled.crackling_delta):
+        assert isinstance(v, float)
+
+    # The strict CSN .passes is NOT the criticality criterion (the τ-band above is — exactly as increment-3
+    # treats p_boot: a budget knob, never a frozen threshold, test_shakedown_discrim lines 10-14). BUT the
+    # DECISIONS-banked GoF FINDING — the full-shape Clauset bootstrap REJECTS the known-critical coupled CRIT
+    # (p_boot -> 0) DESPITE a near-perfect exponent, because a critical-branching avalanche distribution
+    # carries a finite-size cutoff (max size ~ N) that is a genuine departure from a PURE power law — is
+    # LOCKED here as a regression guard so the banked phenomenon cannot silently drift (Codex review). This
+    # PINS the finding; it does NOT use .passes to certify criticality. SCOPE: p_boot-strict is the wrong
+    # instrument for "is the exponent critical" (τ-band is) — NOT evidence it is unreliable for "is this a
+    # clean power law over its fitted range," where the cutoff IS a real departure it correctly catches.
+    assert res.coupled.tau_passes is False          # coupled CRIT rejects strict CSN ...
+    assert res.coupled.p_boot < 0.10                 # ... via p_boot -> 0 (the banked finding, pinned)
+    assert res.parrot.tau_passes is False and np.isnan(res.parrot.p_boot)   # null: degenerate, no fit
 
 
 def test_emission_time_analog_column(res):
