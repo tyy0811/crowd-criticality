@@ -60,8 +60,11 @@ def n_struct(av):
 def burstiness(times):
     """Burstiness B = (σ-μ)/(σ+μ) of inter-event gaps (Goh-Barabási). Regular -> -1, Poisson -> ~0,
     bursty -> ~1. A single-moment-ratio summary; routes through NO self-excitation fit, so it is a
-    candidate observable not defeated by the heavy tail. < 3 events -> nan."""
+    candidate observable not defeated by the heavy tail. < 3 events -> nan. FAIL-CLOSED on non-finite
+    times (a nan/inf in the stream is an upstream bug, not a silently-swallowed nan)."""
     t = np.sort(np.asarray(times, dtype=float))
+    if t.size and not np.all(np.isfinite(t)):
+        raise ValueError("burstiness: times must be finite")
     if t.size < 3:
         return float("nan")
     dt = np.diff(t)
@@ -74,10 +77,18 @@ def fano_profile(times, horizon, window_sizes):
     """Scale-resolved Fano factor F(T) = Var(count)/Mean(count) over fixed windows of size T, one entry
     per T in window_sizes. Poisson -> F≈1 at all scales; clustering inflates F and may grow with T,
     showing WHERE in timescale the clustering lives (diagnostic about temporal non-compactness itself).
-    Routes through no fit. A window size yielding < 2 bins -> nan for that scale."""
+    Routes through no fit. A window size yielding < 2 bins -> nan for that scale. FAIL-CLOSED on a
+    non-positive/non-finite horizon or window size (a 0 or negative T would silently produce a malformed
+    column — ZeroDivisionError / nan — rather than a clear error)."""
     t = np.sort(np.asarray(times, dtype=float))
+    if t.size and not np.all(np.isfinite(t)):
+        raise ValueError("fano_profile: times must be finite")
+    if not (np.isfinite(horizon) and horizon > 0):
+        raise ValueError(f"fano_profile: horizon must be finite and > 0 (got {horizon})")
     out = []
     for T in window_sizes:
+        if not (np.isfinite(T) and T > 0):
+            raise ValueError(f"fano_profile: window size must be finite and > 0 (got {T})")
         nb = int(np.floor(horizon / T))
         if nb < 2:
             out.append(float("nan"))

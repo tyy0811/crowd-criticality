@@ -45,3 +45,20 @@ def test_fano_profile_poisson_near_one_clustered_above():
     assert fp.shape == (2,)
     assert np.all(fp < 2.0)                 # Poisson Fano ≈ 1
     assert np.nanmax(fc) > np.nanmax(fp)    # clustering inflates Fano
+
+
+def test_fano_profile_fails_closed_on_bad_window_or_horizon():
+    t = np.sort(np.random.default_rng(0).uniform(0, 100, size=200))
+    with pytest.raises(ValueError):
+        fano_profile(t, 100.0, (0.0, 10.0))      # T=0 would ZeroDivide / inf-bin
+    with pytest.raises(ValueError):
+        fano_profile(t, 100.0, (-5.0, 10.0))     # negative window
+    with pytest.raises(ValueError):
+        fano_profile(t, 0.0, (10.0,))            # non-positive horizon
+    with pytest.raises(ValueError):
+        fano_profile(np.array([0.0, np.nan, 1.0]), 100.0, (10.0,))  # non-finite times
+
+
+def test_burstiness_fails_closed_on_nonfinite():
+    with pytest.raises(ValueError):
+        burstiness(np.array([0.0, np.nan, 1.0, 2.0]))
