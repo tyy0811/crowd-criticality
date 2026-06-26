@@ -1,5 +1,14 @@
 """Gate-INDEPENDENT anchors for the shakedown plants.
 
+THREE 'n_tree'-ish quantities are named apart (the parrot-null rig keeps the falsifiable gate off the
+asserting one; see parrot_spec.py / docs/superpowers/specs/2026-06-25-parrot-null-design.md §3):
+  n_gen   = n_tree below = successes/events (generative, belief-coupled; needs opinions; DOES NOT transfer).
+  n_struct= 1 - #roots/#events from post_reply_tree on TRUE links (structural; the only branching the
+            sweep's reply graph affords; saturates < 1, so it cannot certify supercritical).
+  n_emit  = the read->emit emission-time analog; == n_gen computationally in Deffuant but SPLITS at the
+            sweep (n_gen needs ground-truth opinions, n_emit is harness-logged) — so prototyping it here
+            validates its construction for free.
+
 n_tree (PRIMARY) — the structural branching ratio counted from the generator's OWN bookkeeping
 (successful confidence-compatible attempts per firing). Monotonic in eps by construction
 (P(|Δx|<eps) ↑ eps) and crosses 1, so it ORDERS the LOW/HIGH plants across criticality. The
@@ -33,3 +42,58 @@ def chi(run):
     if run.belief_traj.size == 0:
         return float("nan")
     return float(np.var(run.belief_traj))
+
+
+def n_struct(av):
+    """Reconstructed STRUCTURAL branching ratio = 1 - #roots/#events, from post_reply_tree's avalanche
+    set on TRUE parent links. #roots = av.sizes.size (one root per avalanche), #events = sum(av.sizes).
+    Saturates < 1 (each event has <= 1 parent) and so cannot certify supercritical (that is n_emit's job).
+    In the collapse parrot every avalanche is size 1 -> n_struct == 0 exactly (the structural positive
+    control). From the AvalancheSet ONLY — never reads any other pipeline product."""
+    n_events = int(np.sum(av.sizes))
+    if n_events == 0:
+        raise ValueError("n_struct needs >= 1 event")
+    n_roots = int(av.sizes.size)
+    return 1.0 - n_roots / n_events
+
+
+def burstiness(times):
+    """Burstiness B = (σ-μ)/(σ+μ) of inter-event gaps (Goh-Barabási). Regular -> -1, Poisson -> ~0,
+    bursty -> ~1. A single-moment-ratio summary; routes through NO self-excitation fit, so it is a
+    candidate observable not defeated by the heavy tail. < 3 events -> nan. FAIL-CLOSED on non-finite
+    times (a nan/inf in the stream is an upstream bug, not a silently-swallowed nan)."""
+    t = np.sort(np.asarray(times, dtype=float))
+    if t.size and not np.all(np.isfinite(t)):
+        raise ValueError("burstiness: times must be finite")
+    if t.size < 3:
+        return float("nan")
+    dt = np.diff(t)
+    mu, sigma = float(dt.mean()), float(dt.std())
+    denom = sigma + mu
+    return (sigma - mu) / denom if denom > 0 else float("nan")
+
+
+def fano_profile(times, horizon, window_sizes):
+    """Scale-resolved Fano factor F(T) = Var(count)/Mean(count) over fixed windows of size T, one entry
+    per T in window_sizes. Poisson -> F≈1 at all scales; clustering inflates F and may grow with T,
+    showing WHERE in timescale the clustering lives (diagnostic about temporal non-compactness itself).
+    Routes through no fit. A window size yielding < 2 bins -> nan for that scale. FAIL-CLOSED on a
+    non-positive/non-finite horizon or window size (a 0 or negative T would silently produce a malformed
+    column — ZeroDivisionError / nan — rather than a clear error)."""
+    t = np.sort(np.asarray(times, dtype=float))
+    if t.size and not np.all(np.isfinite(t)):
+        raise ValueError("fano_profile: times must be finite")
+    if not (np.isfinite(horizon) and horizon > 0):
+        raise ValueError(f"fano_profile: horizon must be finite and > 0 (got {horizon})")
+    out = []
+    for T in window_sizes:
+        if not (np.isfinite(T) and T > 0):
+            raise ValueError(f"fano_profile: window size must be finite and > 0 (got {T})")
+        nb = int(np.floor(horizon / T))
+        if nb < 2:
+            out.append(float("nan"))
+            continue
+        counts, _ = np.histogram(t, bins=np.arange(nb + 1) * T)
+        m = float(counts.mean())
+        out.append(float(counts.var() / m) if m > 0 else float("nan"))
+    return np.asarray(out, dtype=float)
