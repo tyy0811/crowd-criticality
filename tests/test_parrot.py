@@ -27,7 +27,16 @@ def test_parrot_spec_frozen_surface():
     assert 0.0 < ps.BURST_NULL_HI < 0.5          # Poisson B≈0 + finite-sample tol
     assert ps.FANO_NULL_LO < 1.0 < ps.FANO_NULL_HI  # Poisson F≈1 band
     assert ps.N_EMIT_REF_MIN > 0.0               # coupled CRIT n_emit crosses toward 1
+    assert ps.N_EMIT_REF_MIN == cs.N_TREE_SUB    # the floor IS incr-3's subcritical bound (theory-anchored)
     assert len(ps.FANO_WINDOW_SIZES) >= 2         # scale-resolved
+    # the reference plant is named (documents the contrast plant identity)
+    assert ps.REFERENCE_PLANT == "CRIT"
+    # sweep-side interface band: frozen-but-not-consumed in the prototype, LOCKED here so its construction
+    # parameters cannot drift / be widened after seeing where a decoupled run lands (the anti-p-hacking
+    # freeze the §8 comment promises is otherwise unenforced — documentation is not verification)
+    assert ps.SWEEP_BAND_SEEDS == 64
+    assert ps.SWEEP_BAND_QUANTILE == 0.95
+    assert ps.SWEEP_BAND_EDGE == "max"
 
 
 def test_parrot_collapses_to_immigrant_only():

@@ -44,7 +44,13 @@ FANO_NULL_HI = 1.60            # ... upper edge
 # .passes / p_boot is RECORDED-NOT-ASSERTED — incr-3 disclaims it as a budget knob, and the full-shape
 # Clauset bootstrap rejects the known-critical coupled CRIT (finite-size cutoff != PURE power law) despite
 # a near-perfect exponent. See the 2026-06-25 DECISIONS entry (freeze-correction + scoped GoF finding).
-N_EMIT_REF_MIN = 0.70          # n_emit(coupled CRIT) ≈ 1.3 in incr-3; crosses toward 1
+# N_EMIT_REF_MIN: THEORY-anchored. EPS_CRIT is DEFINED by m0 = K_REACH·(2eps−eps²) = 1 (spec.py:23, the
+# mean-field critical point), so the generative branching at the coupled CRIT crosses toward 1; 0.70 is a
+# conservative floor — the SAME value as the incr-3 subcritical bound N_TREE_SUB (spec.py:42) — asserting
+# only "coupled CRIT n_emit is NOT subcritical". incr-3's measured n_tree(CRIT) ≈ 1.3 is CORROBORATION
+# (its DECISIONS prose), NOT a test-locked anchor: incr-3 locks only the LOW/HIGH extremes + CRIT τ, not a
+# CRIT n_tree bound (test_shakedown_discrim.py / test_anchors.py). So the threshold rests on theory, not pedigree.
+N_EMIT_REF_MIN = 0.70          # = N_TREE_SUB; coupled CRIT n_emit crosses toward 1 (m0=1 by construction)
 TAU_TARGET = cs.TAU_TARGET     # 1.5
 TAU_TOL = cs.TAU_TOL           # 0.30
 
