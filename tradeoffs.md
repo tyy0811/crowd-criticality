@@ -115,3 +115,34 @@ masked the real phenomenon — that the project's own strict GoF gate rejects a 
 correct exponent. The freeze-discipline (write the criterion result-blind, then refuse to relax it when it
 fires) is exactly what converted a mis-frozen assertion into a provenance correction plus a banked,
 scope-bounded finding instead of a silent green test.
+
+---
+
+## 2026-06-29 — Truncated the install log, then trusted it as the complete diff
+
+**What the check found.** Restoring the base env after the camel-oasis install required the complete set
+of packages the install changed. I captured the install by piping it through `… | tail -40`, so the saved
+`.output` file held only the last ~40 lines of pip — which happened to contain exactly 7 uninstall
+("downgrade") blocks plus the final "Successfully installed" line. I first reported "7 downgrades" as the
+full diff. It was not: any downgrade whose uninstall block scrolled above the 40-line cutoff was silently
+absent from the artifact I was treating as authoritative.
+
+**Root cause.** A `tail`-truncated log looks like a complete record when the tail happens to contain a
+plausible, self-consistent set of entries. Trusting it as the diff is the project's signature failure —
+"documentation (here, a partial captured artifact) is not verification." The first pass even *improved* on
+the glance (7 caught, not the 1 first noticed), which masked that 7 was still a floor, not a measured total.
+
+**Fix.** Recovered the real state by **measurement instead of the broken log**: (1) `pip check` on base —
+every dependency the install actually broke (answer: none of the 7 violate any base floor; all listed
+conflicts pre-existed; base torch/numpy untouched); (2) per-package independent
+`pip install <pkg>==<oldver> --dry-run` gated on zero transitive movement, so each revert is verified in
+isolation against the live resolver rather than inferred from the log. All 7 reverted clean. Residual
+honesty: an unknown number of truncated-away downgrades may remain, bounded by the same measurement
+(nothing base floors above; ABI surface untouched) to be harmless — recorded, not asserted away.
+Procedural correction: capture install/build logs in full (`tee`, no `tail` in the capture path) when the
+log is the source of truth for a later reversal.
+
+**Cost if the check hadn't existed.** Asserting "base restored" on the truncated 7 would have left any
+above-the-cut downgrade silently in place under a "restored" label — the exact false-completeness the
+discipline exists to prevent. The recovery cost (~two measurement passes) was a fraction of debugging a
+mystery base regression weeks later with no record of what changed.
