@@ -65,3 +65,13 @@ def compute_read_emit(events, refreshes):
         if served is not None and e.parent_item_id in served:
             out[i] = True
     return out
+
+
+def assemble_harness_run(events, refreshes):
+    """Compose the normalized HarnessRun. build_parent_root and compute_read_emit each re-apply the
+    same stable time-sort, so their outputs align; content is taken in that same order."""
+    ev = _time_sorted(events)
+    times, root_id, parent_idx = build_parent_root(events)
+    read_emit_success = compute_read_emit(events, refreshes)
+    return HarnessRun(times=times, root_id=root_id, parent_idx=parent_idx,
+                      read_emit_success=read_emit_success, content=[e.content for e in ev])

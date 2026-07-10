@@ -1,13 +1,15 @@
 """Gate-INDEPENDENT anchors for the shakedown plants.
 
-THREE 'n_tree'-ish quantities are named apart (the parrot-null rig keeps the falsifiable gate off the
-asserting one; see parrot_spec.py / docs/superpowers/specs/2026-06-25-parrot-null-design.md §3):
-  n_gen   = n_tree below = successes/events (generative, belief-coupled; needs opinions; DOES NOT transfer).
-  n_struct= 1 - #roots/#events from post_reply_tree on TRUE links (structural; the only branching the
-            sweep's reply graph affords; saturates < 1, so it cannot certify supercritical).
-  n_emit  = the read->emit emission-time analog; == n_gen computationally in Deffuant but SPLITS at the
-            sweep (n_gen needs ground-truth opinions, n_emit is harness-logged) — so prototyping it here
-            validates its construction for free.
+FOUR quantities are named apart (the parrot-null rig keeps the falsifiable gate off the asserting one;
+see parrot_spec.py / docs/superpowers/specs/2026-06-25-parrot-null-design.md §3):
+  n_gen           = n_tree below = successes/events (generative, belief-coupled; needs opinions; DOES NOT transfer).
+  n_struct        = 1 - #roots/#events from post_reply_tree on TRUE links (structural; the only branching the
+                    sweep's reply graph affords; saturates < 1, so it cannot certify supercritical).
+  read_emit_ratio = realized read->emit fraction = read_emit_success/events; a SUBSET of realized edges, so
+                    <= n_struct < 1 — read->emit ACCESSIBILITY only, NEVER a regime certifier.
+  n_emit          = the crosses-1 GENERATIVE read->emit analog (== n_gen in Deffuant, SPLITS at the sweep where
+                    n_gen needs ground-truth opinions); DEFERRED / out of scope here (sub-inc-1 design
+                    2026-06-27 §2/§12) — do not conflate it with read_emit_ratio.
 
 n_tree (PRIMARY) — the structural branching ratio counted from the generator's OWN bookkeeping
 (successful confidence-compatible attempts per firing). Monotonic in eps by construction
@@ -97,3 +99,13 @@ def fano_profile(times, horizon, window_sizes):
         m = float(counts.mean())
         out.append(float(counts.var() / m) if m > 0 else float("nan"))
     return np.asarray(out, dtype=float)
+
+
+def read_emit_ratio(run):
+    """Realized read->emit fraction = (# emits whose parent was in the agent's most-recent prior served
+    set) / #events. A SUBSET of realized edges, so <= n_struct < 1 — resolves read->emit ACCESSIBILITY,
+    NOT the crosses-1 generative n_emit (deferred; see the sub-inc-1 design 2026-06-27 §2/§12).
+    FAIL-CLOSED on an empty stream."""
+    if run.times.size == 0:
+        raise ValueError("read_emit_ratio needs >= 1 event")
+    return float(np.sum(run.read_emit_success)) / float(run.times.size)
