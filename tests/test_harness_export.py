@@ -141,3 +141,16 @@ def test_export_harness_run_real_trace_regression():
     assert int((run.parent_idx < 0).sum()) == 3                  # 3 original (root) posts
     assert int(run.read_emit_success.sum()) == 3                 # A3: 3 same-round read->emit pairs
     assert read_emit_ratio(run) == 3 / 7
+
+
+# --- harness_spec: FROZEN result-blind surface consumed-guard (Task 6) --------------------------
+
+def test_harness_spec_frozen_constants_present_and_sane():
+    from critaudit.sim.harness import harness_spec as hs
+    assert 0.0 < hs.READ_EMIT_FLOOR < 1.0
+    assert 0.0 < hs.MAX_FRAC_SIZE1 <= 1.0
+    assert 0.0 < hs.MAX_GIANT_FRAC <= 1.0
+    assert hs.LENGTH_SPREAD_FLOOR > 0.0
+    assert isinstance(hs.MODEL_ID, str) and hs.MODEL_ID
+    assert isinstance(hs.MODEL_REVISION, str) and hs.MODEL_REVISION
+    assert len(hs.COHORT_SEEDS) >= 3
