@@ -154,3 +154,12 @@ def test_harness_spec_frozen_constants_present_and_sane():
     assert isinstance(hs.MODEL_ID, str) and hs.MODEL_ID
     assert isinstance(hs.MODEL_REVISION, str) and hs.MODEL_REVISION
     assert len(hs.COHORT_SEEDS) >= 3
+
+
+def test_operating_point_frozen():
+    from critaudit.sim.harness import harness_spec as hs
+    assert isinstance(hs.COUPLING_KNOB, str) and hs.COUPLING_KNOB
+    op = hs.OPERATING_POINT
+    for k in ("n_agents", "n_rounds", "network_density", "news_rate", "social_influence"):
+        assert k in op
+    assert op["n_agents"] >= 3
