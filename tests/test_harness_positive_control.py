@@ -44,11 +44,14 @@ def test_positive_control_passes_on_coupled():
     assert diag["read_emit_ratio"] > 0.0
 
 def test_positive_control_raises_on_degenerate():
-    try:
+    # expected AssertionError on a degenerate (all size-1, no read->emit) crowd.
+    # pytest.raises replaces the original try/except-AssertionError idiom, whose `assert False`
+    # sentinel was ITSELF caught by the except (the expected exception IS AssertionError) — a
+    # zero-power test that passed whether or not the gate raised (found via the gate-integrity
+    # power-check discipline; the sibling ValueError-expecting tests elsewhere are unaffected,
+    # their sentinel propagates).
+    with pytest.raises(AssertionError):
         check_positive_control(_degenerate_all_size1())
-        assert False, "expected AssertionError on a degenerate (all size-1, no read->emit) crowd"
-    except AssertionError:
-        pass
 
 def test_positive_control_raises_on_giant_only():
     # Regression guard on the giant_frac failure path — the ONE threshold no other fixture trips
