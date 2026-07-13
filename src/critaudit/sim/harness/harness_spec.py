@@ -51,14 +51,31 @@ COHORT_SEEDS = (20260627, 20260628, 20260629)
 #     OASIS ships refresh_rec_post_count at 1 (Platform default platform.py:65), 2 (DefaultPlatformType
 #     .TWITTER env.py:82), 5 (DefaultPlatformType.REDDIT env.py:96) -> documented span [1, 5]; arithmetic
 #     midpoint (1+5)/2 = 3. (A count's only natural upper bound is the buffer max_rec_post_len, so the
-#     bounded range used is OASIS's own documented shipped span; owner-ratification caveat in the report.)
+#     bounded range used is OASIS's own documented shipped span; basis alternatives — median{1,2,5}=2,
+#     buffer-relative — disclosed in the report and ratified as a genuinely free result-blind choice.)
+#
+#     RATIFIED by owner 2026-07-13 (DECISIONS.md 2026-07-13) with this SCOPING CAVEAT: the knob's axis is
+#     EXPOSURE VOLUME. "More posts served = stronger effective coupling" is a MECHANISM ASSUMPTION, not a
+#     fact — more served content could in principle dilute attention rather than amplify drive. The sweep
+#     itself reveals the actual exposure->coupling mapping; downstream interpretation must NOT treat
+#     monotonicity as built-in when it was assumed. (This scopes what the knob is KNOWN to be — served-feed
+#     width — without weakening the selection.)
 COUPLING_KNOB = "refresh_rec_post_count"   # OASIS Platform ctor arg (platform.py:65); carries `social_influence`
 OPERATING_POINT = {
     # Each value is a registered mid-range intent (2026-06-27) or the knob's own documented mid-range;
     # zero output-side reasoning anywhere. The trailing note per key is the WIRING: the exact OASIS
     # surface Task 9/10 `run_oasis_minimal` sets it through (so no re-enumeration is needed downstream).
+    #
+    # DEFERRED-FREEZE OBLIGATION (owner ratification 2026-07-13): network_density and news_rate are
+    # ratified as harness-CONSTRUCTED build items ONLY — that ratification does NOT pre-ratify their
+    # eventual construction rules or realized values. The Task-9/10 construction rules (the exact
+    # follow-edge-fraction realization; the injection schedule) MUST be frozen result-blind BEFORE any
+    # cohort output exists — the same standard COUPLING_KNOB met. Constructing an axis risks selecting
+    # the axis on the quantity under test (the adopt-OASIS warning attaches exactly here). Phase B may
+    # not read this dict as "already ratified" for those two keys' realizations.
     "n_agents": 50,            # crowd size -> number of SocialAgents in the AgentGraph passed to make()
-                               #   (= profile row count / agent_graph.add_agent calls; agents_generator.py)
+                               #   (= profile row count / agent_graph.add_agent calls;
+                               #   generate_twitter_agent_graph, agents_generator.py:614-649)
     "n_rounds": 20,            # number of OasisEnv.step() calls in the driver loop (1 step = 1 round;
                                #   Twitter clock ticks per step, env.py:197-198)
     "network_density": 0.10,   # fraction of directed follow-edges: harness builds ~0.10*n*(n-1) follow rows
