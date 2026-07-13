@@ -163,3 +163,33 @@ def test_operating_point_frozen():
     for k in ("n_agents", "n_rounds", "network_density", "news_rate", "social_influence"):
         assert k in op
     assert op["n_agents"] >= 3
+
+
+# --- harness_spec: NETWORK_CONSTRUCTION + NEWS_INJECTION consumed-guard (Phase B deferred freeze,
+#     DECISIONS.md 2026-07-13 Ratification 2) — existence/range guards, not value pins ------------
+
+def test_network_news_construction_frozen():
+    from critaudit.sim.harness import harness_spec as hs
+    # network axis: rule form + the named OASIS realization surface are frozen non-empty strings
+    assert isinstance(hs.NETWORK_GRAPH_FORM, str) and hs.NETWORK_GRAPH_FORM
+    assert isinstance(hs.NETWORK_EDGE_SURFACE, str) and hs.NETWORK_EDGE_SURFACE
+    # seeding convention: namespaced spawn-key streams present, non-negative ints, all distinct
+    # (graph draw and news draws must be independent streams — changing one cannot perturb another)
+    streams = (hs.RNG_STREAM_GRAPH, hs.RNG_STREAM_NEWS_SCHEDULE, hs.RNG_STREAM_NEWS_CONTENT)
+    assert all(isinstance(s, int) and s >= 0 for s in streams)
+    assert len(set(streams)) == len(streams)
+    # news axis: schedule form + author-identity rule frozen; the dedicated manual author sits
+    # one past the last LLM-crowd id (graph has n_agents+1 members; n_agents stays the crowd count)
+    assert isinstance(hs.NEWS_SCHEDULE_FORM, str) and hs.NEWS_SCHEDULE_FORM
+    assert isinstance(hs.NEWS_AUTHOR_RULE, str) and hs.NEWS_AUTHOR_RULE
+    assert hs.NEWS_USER_AGENT_ID == hs.OPERATING_POINT["n_agents"]
+    # content pool: frozen tuple, auditable size, non-degenerate (content enters prompts and the
+    # length_spread diagnostic — the pool alone must not be able to degenerate it)
+    pool = hs.NEWS_POOL
+    assert isinstance(pool, tuple)
+    assert 8 <= len(pool) <= 16
+    assert all(isinstance(s, str) and s.strip() for s in pool)
+    assert len(set(pool)) == len(pool)                       # no duplicate strings
+    lengths = [len(s) for s in pool]
+    assert len(set(lengths)) == len(lengths)                 # all-distinct lengths
+    assert float(np.std(lengths)) > hs.LENGTH_SPREAD_FLOOR   # pool spread clears the frozen floor
