@@ -9,6 +9,12 @@ from critaudit.sim.harness import harness_spec as hs
 
 
 def check_positive_control(run):
+    # Fail LOUD on an empty reference BEFORE any extraction/division: a degraded/near-empty Phase-B
+    # cohort trace must trip a LABELLED gate failure, not an incidental ZeroDivisionError in the
+    # frac_size1 division (0/0) nor a vacuous threshold pass (design §8/§9).
+    if run.times.size == 0:
+        raise AssertionError("positive control failed (empty reference): 0 events — "
+                             "a degraded/empty trace cannot clear the gate (design §8/§9)")
     av = post_reply_tree(run.times, run.root_id, run.parent_idx)
     sizes = av.sizes
     n_events = int(sizes.sum())
