@@ -270,6 +270,63 @@ def _make_counting_model(*, model_id, endpoint_url, token, max_tokens, temperatu
     )
 
 
+_NEWS_SENTINEL_MSG = ("news user is model-free by frozen NEWS_AUTHOR_RULE — a model call means a "
+                      "driver bug routed an LLM action to it")
+
+
+def _make_news_sentinel_model(*, model_id, endpoint_url, token, max_tokens, temperature, timeout):
+    """FAIL-CLOSED sentinel backend for the manual news user (controller ratification 2026-07-14,
+    strengthening the model=None correction): the frozen NEWS_AUTHOR_RULE "never LLM-driven" is
+    ENFORCED at runtime, not assumed — sharing a live backend would let a driver bug that routes an
+    LLMAction to the news user silently succeed and pollute authorship (same enforcement-over-
+    assumption pattern as the parrot tripwire / positive-control gates). Constructed with the REAL
+    endpoint config on the same OpenAICompatibleModel family, so every construction-time touch works
+    (ChatAgent init -> ModelManager wrap; token_counter, openai_compatible_model.py:438; token_limit
+    -> memory context creator, chat_agent.py:478-481) — but EVERY inference entry point raises.
+    Coverage argument (verified from installed camel-ai 0.2.78): ChatAgent/ModelManager reach the
+    backend ONLY via public run/arun (chat_agent.py:2184/2248/2838/3576; model_manager.py:229/274),
+    which funnel to _run/_arun (base_model.py:428/480); the ONLY client-touching methods on
+    OpenAICompatibleModel are the six _request_* helpers (openai_compatible_model.py:281-430), all
+    called from _run/_arun — overridden too (belt-and-braces), so NO inference path escapes."""
+    from camel.models.openai_compatible_model import OpenAICompatibleModel
+
+    class _NewsSentinelModel(OpenAICompatibleModel):
+        def _sentinel(self):
+            raise AssertionError(_NEWS_SENTINEL_MSG)
+
+        def _run(self, *a, **k):
+            self._sentinel()
+
+        async def _arun(self, *a, **k):
+            self._sentinel()
+
+        def _request_chat_completion(self, *a, **k):
+            self._sentinel()
+
+        async def _arequest_chat_completion(self, *a, **k):
+            self._sentinel()
+
+        def _request_parse(self, *a, **k):
+            self._sentinel()
+
+        async def _arequest_parse(self, *a, **k):
+            self._sentinel()
+
+        def _request_stream_parse(self, *a, **k):
+            self._sentinel()
+
+        async def _arequest_stream_parse(self, *a, **k):
+            self._sentinel()
+
+    return _NewsSentinelModel(
+        model_type=model_id,
+        model_config_dict={"temperature": temperature, "max_tokens": max_tokens},
+        api_key=token,
+        url=endpoint_url,
+        timeout=timeout,
+    )
+
+
 def _new_user_info(*, name, bio, user_profile):
     """A UserInfo whose to_twitter_system_message uses name + profile.other_info.user_profile
     (config/user.py:50-63). recsys_type='twitter' selects the non-Reddit message form (independent
@@ -283,10 +340,10 @@ def _new_user_info(*, name, bio, user_profile):
     )
 
 
-async def _run_oasis_minimal_async(*, operating_point, model, db_path, edges, schedule):
-    """The awaited OASIS wiring (freeze report §4 ordered recipe). `model` is the shared counting
-    backend; `edges`/`schedule` are the pure-builder outputs. Fail-closed: a failed follow insert
-    raises (no silent partial graph)."""
+async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_path, edges, schedule):
+    """The awaited OASIS wiring (freeze report §4 ordered recipe). `model` is the crowd's counting
+    backend; `news_model` is the news user's fail-closed sentinel; `edges`/`schedule` are the
+    pure-builder outputs. Fail-closed: a failed follow insert raises (no silent partial graph)."""
     from oasis import (ActionType, AgentGraph, LLMAction, ManualAction, Platform,
                        SocialAgent, make)
     from oasis.social_platform.channel import Channel
@@ -307,20 +364,21 @@ async def _run_oasis_minimal_async(*, operating_point, model, db_path, edges, sc
             model=model, available_actions=available))
     news_id = n_agents          # NEWS_AUTHOR_RULE: id = n_agents (last graph member, excluded from
     #                             the crowd count); == hs.NEWS_USER_AGENT_ID at the frozen op-point.
-    # NEWS-USER MODEL — verify-don't-relay correction of the freeze report's `model=None` claim:
-    # model=None is NOT model-free here. ChatAgent resolves None -> ModelFactory.create(DEFAULT =
-    # gpt-4.1-mini) -> OpenAI client, which RAISES at construction without OPENAI_API_KEY
-    # (empirically confirmed, chat_agent.py:595-600). The news user shares the crowd backend instead
-    # — BEHAVIOUR-IDENTICAL: it is listed only with ManualAction, and env.step dispatches
-    # ManualAction -> perform_action_by_data, which calls the resolved SocialAction with NO model
-    # call (agent.py:278-294). All four frozen NEWS_AUTHOR_RULE properties hold (dedicated /
-    # never-LLM-driven [driver-enforced] / no-follow-edges / excluded-from-n_agents); token counts
-    # are unaffected (the news backend is never invoked). Flagged for controller ratification.
+    # NEWS-USER MODEL — verify-don't-relay correction of the freeze report's `model=None` claim,
+    # RATIFIED with a strengthening (controller, 2026-07-14): model=None is NOT model-free here —
+    # ChatAgent resolves None -> ModelFactory.create(DEFAULT = gpt-4.1-mini) -> OpenAI client, which
+    # RAISES at construction without OPENAI_API_KEY (measured; chat_agent.py:595-600). The news user
+    # gets the FAIL-CLOSED SENTINEL backend: its legitimate path is ManualAction only (env.step ->
+    # perform_action_by_data -> the resolved SocialAction, NO model call, agent.py:278-294), and the
+    # sentinel makes "never LLM-driven" a runtime tripwire — a driver bug routing an LLMAction to it
+    # raises instead of silently emitting under news authorship. All four frozen NEWS_AUTHOR_RULE
+    # properties hold (dedicated / never-LLM-driven [now ENFORCED] / no-follow-edges /
+    # excluded-from-n_agents); token counts are unaffected (the sentinel can never be invoked).
     graph.add_agent(SocialAgent(
         agent_id=news_id,
         user_info=_new_user_info(name="news_source", bio=_NEWS_BIO,
                                  user_profile=_NEWS_USER_PROFILE),
-        model=model, available_actions=available))
+        model=news_model, available_actions=available))
 
     # 2. Custom Platform (recsys_type frozen -> RecsysType enum; refresh_rec_post_count = the frozen
     #    coupling knob; max_rec_post_len >= that count so the knob is not silently capped). Passing
@@ -376,6 +434,9 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
     model = _make_counting_model(
         model_id=model_id, endpoint_url=endpoint_url, token=token,
         max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S)
+    news_model = _make_news_sentinel_model(
+        model_id=model_id, endpoint_url=endpoint_url, token=token,
+        max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S)
 
     edges = build_follow_edges(
         seed, n_agents=operating_point["n_agents"], density=operating_point["network_density"])
@@ -383,7 +444,7 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
         seed, n_rounds=operating_point["n_rounds"], news_rate=operating_point["news_rate"])
 
     asyncio.run(_run_oasis_minimal_async(
-        operating_point=operating_point, model=model, db_path=db_path,
+        operating_point=operating_point, model=model, news_model=news_model, db_path=db_path,
         edges=edges, schedule=schedule))
 
     token_counts = dict(model.usage_counts)

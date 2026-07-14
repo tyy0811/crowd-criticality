@@ -98,10 +98,12 @@ def test_reference_cohort_positive_control():
 @pytest.mark.slow
 def test_construction_half_no_llm(tmp_path):
     # Builds 6 crowd + 1 manual news user, realizes the frozen follow graph, runs news-ONLY rounds
-    # (no LLMAction -> crowd never acts), then asserts the DB. Crowd + news use a keyless
-    # NEVER-CALLED backend: model=None is NOT usable here (ChatAgent resolves None ->
-    # ModelFactory.create(DEFAULT gpt-4.1-mini) -> raises without OPENAI_API_KEY) — the same
-    # freeze-vs-reality fact run_oasis_minimal resolves by sharing the crowd backend with the news user.
+    # (no LLMAction -> crowd never acts), then asserts the DB. Crowd uses a keyless NEVER-CALLED
+    # backend: model=None is NOT usable here (ChatAgent resolves None -> ModelFactory.create(DEFAULT
+    # gpt-4.1-mini) -> raises without OPENAI_API_KEY) — the measured freeze-vs-reality fact. The news
+    # user gets the FAIL-CLOSED SENTINEL (as in run_oasis_minimal; controller ratification
+    # 2026-07-14): this test PASSING is the proof the tripwire has the right scope — the news user's
+    # ManualAction(CREATE_POST) dispatch must NOT trip it (inference dispatch is fatal, tested apart).
     import asyncio
     import sqlite3
 
@@ -114,8 +116,8 @@ def test_construction_half_no_llm(tmp_path):
 
     from critaudit.sim.harness import harness_spec as hs
     from critaudit.sim.harness.oasis_adapter import (
-        MAX_REC_POST_LEN, _MINIMAL_ACTION_NAMES, _new_user_info, build_follow_edges,
-        build_news_schedule, export_harness_run)
+        MAX_REC_POST_LEN, _MINIMAL_ACTION_NAMES, _make_news_sentinel_model, _new_user_info,
+        build_follow_edges, build_news_schedule, export_harness_run)
 
     n_agents, density, n_rounds, news_rate, seed = 6, 0.10, 6, 0.5, 20260627
     db = str(tmp_path / "construction.db")
@@ -128,6 +130,9 @@ def test_construction_half_no_llm(tmp_path):
         model_platform=ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
         model_type="construction-never-called", url="http://127.0.0.1:1/v1", api_key="unused",
         model_config_dict={"temperature": 0.7, "max_tokens": 4096}, timeout=5)
+    news_model = _make_news_sentinel_model(
+        model_id="construction-never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
+        max_tokens=4096, temperature=0.7, timeout=5)
     available = [ActionType(name) for name in _MINIMAL_ACTION_NAMES]
 
     async def build_and_run():
@@ -139,7 +144,7 @@ def test_construction_half_no_llm(tmp_path):
         news_id = n_agents
         graph.add_agent(SocialAgent(
             agent_id=news_id, user_info=_new_user_info(name="news", bio="b", user_profile="p"),
-            model=model, available_actions=available))
+            model=news_model, available_actions=available))   # SENTINEL: manual-only, enforced
         platform = Platform(
             db_path=db, channel=Channel(), recsys_type=RecsysType(hs.RECSYS_TYPE),
             refresh_rec_post_count=hs.OPERATING_POINT["social_influence"],
@@ -206,3 +211,47 @@ def test_usage_accounting_sums_across_calls():
     m._accumulate(_FakeResult(_FakeUsage(20, 5, 25)))
     m._accumulate(_FakeResult(None))          # a usage-less result counts the call, adds no tokens
     assert m.usage_counts == {"prompt": 30, "completion": 8, "total": 38, "n_calls": 3}
+
+
+# --- @slow (imports CAMEL+OASIS; $0, NO network): the news user's FAIL-CLOSED SENTINEL model
+#     (controller ratification 2026-07-14): "model-free by frozen NEWS_AUTHOR_RULE" is ENFORCED at
+#     runtime, not assumed — any inference call on the news backend is a driver bug and must raise.
+#     Scope check is two-sided: construction + manual dispatch clean (the ManualAction path in
+#     test_construction_half_no_llm, which wires this sentinel); inference dispatch fatal (here). ---
+
+@pytest.mark.slow
+def test_news_sentinel_constructs_but_blocks_all_inference():
+    import asyncio
+
+    from oasis.social_platform.typing import ActionType
+
+    from critaudit.sim.harness.oasis_adapter import (
+        _MINIMAL_ACTION_NAMES, _make_news_sentinel_model, _new_user_info)
+
+    sentinel = _make_news_sentinel_model(
+        model_id="never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
+        max_tokens=64, temperature=0.7, timeout=5)
+
+    # constructs cleanly INSIDE a SocialAgent (subclasses ChatAgent): every construction-time touch
+    # (ModelManager wrap, token_counter, token_limit -> memory context creator) works.
+    from oasis import SocialAgent
+    agent = SocialAgent(
+        agent_id=7, user_info=_new_user_info(name="news", bio="b", user_profile="p"),
+        model=sentinel, available_actions=[ActionType(n) for n in _MINIMAL_ACTION_NAMES])
+    assert agent.social_agent_id == 7
+
+    msgs = [{"role": "user", "content": "hi"}]
+    # the inner entry points every inference path funnels through (base_model.py run->_run,
+    # arun->_arun; ChatAgent/ModelManager call only run/arun)
+    with pytest.raises(AssertionError, match="model-free"):
+        sentinel._run(msgs)
+    with pytest.raises(AssertionError, match="model-free"):
+        asyncio.run(sentinel._arun(msgs))
+    # the PUBLIC funnel (metaclass-wrapped run -> preprocess -> _run) raises too
+    with pytest.raises(AssertionError, match="model-free"):
+        sentinel.run(msgs)
+    # belt-and-braces: the direct client helpers cannot escape either
+    with pytest.raises(AssertionError, match="model-free"):
+        sentinel._request_chat_completion(msgs)
+    with pytest.raises(AssertionError, match="model-free"):
+        asyncio.run(sentinel._arequest_chat_completion(msgs))
