@@ -136,10 +136,16 @@ RNG_STREAM_NEWS_CONTENT = 2   # pool-index draw per realized injection (consumed
 #     dup-check, INSERT INTO follow(follower_id, followee_id, created_at), counters, trace row;
 #     platform.py:859-914) — issued SEQUENTIALLY in drawn order AFTER env.reset() and BEFORE the
 #     first env.step(), each mirrored into the in-memory graph via agent_graph.add_edge(u, v)
-#     (agent_graph.py:206-210), matching OASIS's own runtime graph/DB invariant (the LLM follow
-#     path mirrors likewise, agent.py:296-317). The DB row is the authoritative realization:
-#     refresh serves follow content from the follow TABLE (post JOIN follow ... WHERE
-#     follow.follower_id = ?, platform.py:283-296).
+#     (agent_graph.py:206-210) — the follow()+add_edge idiom OASIS itself uses at SETUP time for
+#     control agents (agents_generator.py:384-385, the live precedent). CORRECTED 2026-07-14
+#     (review catch, re-verified from source): OASIS maintains NO runtime graph/DB invariant —
+#     the runtime mirror perform_agent_graph_action (agent.py:296-317) is DEAD CODE in
+#     camel-oasis 0.2.5 (its only caller is commented out, agent.py:150; grep-confirmed no other
+#     caller), so LLM-driven follows during rounds write the DB follow table but are NOT
+#     mirrored to the igraph: as rounds run, the igraph holds construction edges only and
+#     DIVERGES from the DB. The DB row is the authoritative realized graph — Task 9/10 must
+#     NEVER read the igraph as the realized follow graph. Refresh serves follow content from the
+#     follow TABLE (post JOIN follow ... WHERE follow.follower_id = ?, platform.py:283-296).
 #       WHY THIS SURFACE (source-verified; supersedes the OPERATING_POINT wiring note's
 #     anticipated "profile following-list / add_edge" family with the pipe that actually exists):
 #     env.reset() -> generate_custom_agents ONLY signs agents up — it reads NO graph edges and
