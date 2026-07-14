@@ -193,3 +193,30 @@ def test_network_news_construction_frozen():
     lengths = [len(s) for s in pool]
     assert len(set(lengths)) == len(lengths)                 # all-distinct lengths
     assert float(np.std(lengths)) > hs.LENGTH_SPREAD_FLOOR   # pool spread clears the frozen floor
+
+
+# --- harness_spec: Task-10 spec freezes consumed-guard (RECSYS_TYPE, MODEL_REVISION pin,
+#     COHORT_MAX_TOKENS) — existence/range/drift guards, not value pins ---------------------------
+
+def test_task10_spec_freezes_present_and_sane():
+    import re
+    from critaudit.sim.harness import harness_spec as hs
+    # RECSYS_TYPE: frozen exact Platform-ctor value; must be a non-Reddit OASIS enum value
+    # (Reddit mode skips the follow feed and breaks the round-granular pairing clock)
+    assert hs.RECSYS_TYPE in ("twitter", "twhin-bert", "random")
+    # MODEL_REVISION: pinned to a concrete 40-hex commit (no floating ref like "main")
+    assert re.fullmatch(r"[0-9a-f]{40}", hs.MODEL_REVISION)
+    # cross-file drift tripwire: modal_serve.py deliberately does NOT import harness_spec (and
+    # `modal` is not importable under oasis_venv), so extract its SERVED_REVISION literal
+    # textually and require it to equal the frozen pin — served substrate == registered pin.
+    serve_path = os.path.join(os.path.dirname(__file__), "..", "src", "critaudit", "sim",
+                              "harness", "modal_serve.py")
+    with open(serve_path) as f:
+        m = re.search(r'^SERVED_REVISION\s*=\s*"([0-9a-f]{40})"', f.read(), re.M)
+    assert m, "SERVED_REVISION literal not found in modal_serve.py"
+    assert m.group(1) == hs.MODEL_REVISION
+    # COHORT_MAX_TOKENS: registered instrument-integrity budget (CAMEL max_tokens doubles as the
+    # agent context budget); must clear the truncation-prone regime and stay under the served
+    # --max-model-len 8192 with headroom
+    assert isinstance(hs.COHORT_MAX_TOKENS, int)
+    assert 2048 < hs.COHORT_MAX_TOKENS <= 8192

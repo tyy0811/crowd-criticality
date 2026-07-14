@@ -18,7 +18,11 @@ LENGTH_SPREAD_FLOOR = 1.0  # message-length std (chars) > this -> content non-de
 
 # --- model (pinned for reproducibility; gate-model = sweep-model). Default starting rung. ---
 MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"   # 7-8B instruct, fits a single ~$1-2/hr Modal GPU (escalate per design §7)
-MODEL_REVISION = "main"                   # PIN to a concrete commit hash at Task 9 before the cohort run
+MODEL_REVISION = "a09a35458c702b33eeacc393d103063234e8bc28"  # PINNED 2026-07-14 (plan Task 10 Step 1 —
+#   the sanctioned mutation this line's original text ("PIN to a concrete commit hash ... before the
+#   cohort run") carried): resolved from HF `main` 2026-07-14; == modal_serve.py SERVED_REVISION (the
+#   revision actually SERVED and D0-verified by the Task-9 endpoint smoke, task9-rehearsal-report.md
+#   §7-9); cross-file drift-guarded by test_task10_spec_freezes_present_and_sane.
 
 # --- cohort seeds for the @slow positive-control run ---
 COHORT_SEEDS = (20260627, 20260628, 20260629)
@@ -241,3 +245,86 @@ NEWS_POOL = (
     "University lab reports steady progress on a low-cost water filtration method for rural wells.",
     "Archaeology team completes cataloguing of artifacts recovered from last summer's dig.",
 )
+
+# --- Task-10 spec freezes (2026-07-14, result-blind): RECSYS_TYPE + COHORT_MAX_TOKENS ------------
+#     (MODEL_REVISION pinned above per plan Task 10 Step 1 — the one sanctioned non-append edit;
+#     the constant's own original comment carried that obligation.) Everything below is input-side
+#     only; provenance = installed camel-oasis 0.2.5 + camel-ai 0.2.78 + the Task-9 rehearsal's
+#     INSTRUMENT-HEALTH facts (.superpowers/sdd/task9-rehearsal-report.md). No cohort ran; no
+#     output-side statistic informed any value. Recsys obligation: DECISIONS.md 2026-07-13 /
+#     the NETWORK_CONSTRUCTION scope-constraint above ("still-open Task-9/10 result-blind freeze").
+#
+#     RECSYS_TYPE — which recommender fills the rec buffer the coupling knob samples from
+#     (refresh serves refresh_rec_post_count posts sampled FROM the rec table, platform.py:276-278).
+#     WHERE PASSED (source-verified): the Platform ctor arg `recsys_type` (platform.py:64) —
+#     whose DEFAULT IS "reddit", so run_oasis_minimal MUST pass this value explicitly —
+#     normalized via RecsysType(...) at platform.py:88; OasisEnv then derives the TWITTER-family
+#     platform_type for any non-Reddit value (env.py:109-112) -> per-step clock tick
+#     (env.py:197-198) = the round-granular created_at the frozen pairing rule requires.
+#     Enum surface (typing.py:81-85) with the update_rec_table dispatch, all four verified:
+#       "reddit"     -> rec_sys_reddit (platform.py:376-378). DISQUALIFIED (a): under REDDIT,
+#                       refresh SKIPS the follow-feed join (platform.py:280) — kills the frozen
+#                       network axis — and the clock is real-time, not round-granular
+#                       (platform.py:260-262), breaking the frozen pairing rule.
+#       "twitter"    -> rec_sys_personalized_with_trace (platform.py:339-342). DISQUALIFIED (b),
+#                       KNOWN DEFECT, source-verified: the builder emits len(rec_matrix)-1 rows
+#                       positioned by user_table order (recsys.py:719-726) while update_rec_table
+#                       writes rows back keyed by bare range(len(...)) AS user_ids
+#                       (platform.py:388-395) — inconsistent builder/writer conventions. Under
+#                       the helper's own documented 1-based-ids assumption (database.py:258-259)
+#                       every row lands one user off; under this harness's 0-based layout the
+#                       LAST user is silently dropped and the row<->user mapping additionally
+#                       rests on an unordered SELECT (fetch_table_from_db has no ORDER BY,
+#                       database.py:249-254). Also silently fixes swap_rate (unplumbed;
+#                       Task-7 enumeration row 6).
+#       "twhin-bert" -> rec_sys_personalized_twh (platform.py:343-375). DISQUALIFIED (c): loads
+#                       the Twitter/twhin-bert-base embedding model via transformers
+#                       from_pretrained (recsys.py:64-93; SentenceTransformer import
+#                       recsys.py:27) — model substrate BEYOND the pinned LLM (extra weights
+#                       download at cohort time, freshly-initialized pooler weights observed in
+#                       the Task-9 rehearsal = new nondeterminism, network dependency;
+#                       use_openai_embedding would add a PAID API, contra the budget reality).
+#       "random"     -> rec_sys_random (platform.py:336-338). SELECTED: platform-global uniform
+#                       candidate pool (post_ids from the FULL post table, recsys.py:152-163) —
+#                       the news channel reaches every agent exactly as the NEWS_INJECTION
+#                       freeze requires; builder/writer convention-SAFE (emits exactly
+#                       len(rec_matrix) rows of user-independent content, so the range()
+#                       write-back cannot misattribute rows); ZERO extra substrate; and it keeps
+#                       the coupling axis clean — exposure width (refresh_rec_post_count) sweeps
+#                       over a neutral uniformly-filled buffer with no similarity-ranking layer
+#                       confounding "how much is served".
+#     KNOWN NONDETERMINISM, recorded honestly (rule d): rec_sys_random draws with the UNSEEDED
+#     stdlib module RNG (import random, recsys.py:18; random.sample, recsys.py:163), as does
+#     refresh's own buffer subsample under EVERY recsys type (platform.py:277-278). OASIS-internal
+#     sampling is therefore NOT seed-reproducible from the harness side; the constructed INPUTS
+#     (graph, news) remain exactly reproducible via the namespaced streams above, and the LLM
+#     samples at temperature — the cohort's reproducibility boundary is inputs-deterministic /
+#     dynamics-stochastic. Do not pretend otherwise downstream.
+#     WIRING CAUTION for the Platform build (recorded here because it can silently unbind the
+#     frozen knob): Platform's default max_rec_post_len = 2 (platform.py:66) is SMALLER than the
+#     frozen refresh_rec_post_count = 3, and refresh's sample branch fires only when the buffer
+#     has >= refresh_rec_post_count entries (platform.py:276-278) — with the default, at most 2
+#     rec posts are ever served and the frozen operating point is silently capped. Task 10's
+#     Platform(...) call must set max_rec_post_len >= refresh_rec_post_count (OASIS's own Reddit
+#     preset uses 100 vs 5, env.py:95-96); the exact value is a Task-10 driver choice to be set
+#     result-blind there, not a new spec constant here.
+RECSYS_TYPE = "random"   # exact string run_oasis_minimal passes: Platform(recsys_type=RECSYS_TYPE) (platform.py:64)
+
+#     COHORT_MAX_TOKENS — instrument-integrity constant, consumed as model_config_dict
+#     ["max_tokens"] in the cohort's ModelFactory.create(...) on the OPENAI_COMPATIBLE_MODEL
+#     client path (task9-rehearsal-report.md §3). CAMEL couples this value to the agent CONTEXT
+#     budget: BaseModelBackend.token_limit = model_config_dict.get("max_tokens") or the library's
+#     own per-model default (camel base_model.py:539-542), and ChatAgent feeds token_limit into
+#     its memory context creator (camel chat_agent.py:478-481) — too small and the OBSERVATION
+#     (the refresh-served posts) is truncated out of the prompt: the read channel breaks UPSTREAM
+#     of any measurement. Task-9 $0 rehearsal measured the instrument-health fact: at 512,
+#     pervasive CAMEL context-truncation warnings ("Context truncation performed: before=1720,
+#     after=497, limit=512" — observations sliced); at 4096 on the endpoint smoke, ZERO
+#     truncation warnings (grep-confirmed; report §5.3/§9). The discriminating evidence is the
+#     truncation warnings ONLY (prompt integrity, like D0) — no emitted-stream statistic informed
+#     this value: it repairs a broken instrument, it does not tune one. Upper bound: the endpoint
+#     serves --max-model-len 8192 (modal_serve.py:118); 4096 leaves prompt headroom under the
+#     serving cap. Alternative disclosed: omit max_tokens entirely -> CAMEL falls back to its own
+#     model-table token_limit — rejected: a cohort-substrate value must be REGISTERED in the
+#     spec, not inherited from a library default that can drift on a camel upgrade.
+COHORT_MAX_TOKENS = 4096
