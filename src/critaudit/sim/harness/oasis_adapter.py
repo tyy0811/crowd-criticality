@@ -241,7 +241,7 @@ def _make_counting_model(*, model_id, endpoint_url, token, max_tokens, temperatu
     synchronous (no await between the super() return and the += ), so OASIS's asyncio.gather
     per-round fan-out is race-free (single-threaded event loop, no interleave at the mutation).
 
-    DECOUPLING (owner-ratified 2026-07-15, the seed-1 context-wall correction): CAMEL hardwires the
+    DECOUPLING (owner-ratified 2026-07-14, the seed-1 context-wall correction): CAMEL hardwires the
     agent CONTEXT budget to max_tokens (token_limit = model_config_dict.get("max_tokens") or ...,
     base_model.py:530-542) — one constant serving both the completion cap AND the memory budget is
     what drove prompt + 4096 past the served 8192 (1,021 silently-swallowed 400s, seed-1). The
@@ -333,7 +333,7 @@ def _make_news_sentinel_model(*, model_id, endpoint_url, token, max_tokens, temp
     OpenAICompatibleModel are the six _request_* helpers (openai_compatible_model.py:281-430), all
     called from _run/_arun — overridden too (belt-and-braces), so NO inference path escapes.
     `context_budget` mirrors the counting model's token_limit decoupling (constructor-consistency,
-    owner-ratified 2026-07-15): construction-time touches see the same budget the crowd sees."""
+    owner-ratified 2026-07-14): construction-time touches see the same budget the crowd sees."""
     from camel.models.openai_compatible_model import OpenAICompatibleModel
 
     class _NewsSentinelModel(OpenAICompatibleModel):
@@ -459,7 +459,7 @@ async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_pat
         # 5. Round loop r = 1..n_rounds: every LLM crowd agent acts via LLMAction; the news user is
         #    added to round r's SAME step dict with ManualAction(CREATE_POST) iff round r injects
         #    (submit-in-round-r, readable-from-r+1). REFRESH fires automatically inside each
-        #    LLMAction. LOUD-400 GUARD (part 2, owner-ratified 2026-07-15): OASIS swallows per-turn
+        #    LLMAction. LOUD-400 GUARD (part 2, owner-ratified 2026-07-14): OASIS swallows per-turn
         #    model errors (agent.py:153-155) — the seed-1 wall produced 1,021 silent 400s and rounds
         #    of zero emits — so the rejection counter is checked after EVERY round and the run fails
         #    at rejection one, round granularity.

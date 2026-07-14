@@ -261,7 +261,7 @@ def test_news_sentinel_constructs_but_blocks_all_inference():
 
 
 # --- @slow (imports CAMEL; $0, NO network): cap/budget DECOUPLING tripwire (owner-ratified
-#     2026-07-15). CAMEL hardwires the agent context budget to max_tokens (token_limit =
+#     2026-07-14). CAMEL hardwires the agent context budget to max_tokens (token_limit =
 #     model_config_dict.get("max_tokens") or ..., base_model.py:530-542) — the seed-1 context-wall
 #     root cause. The driver subclasses override token_limit to COHORT_CONTEXT_BUDGET while requests
 #     keep max_tokens = COHORT_MAX_TOKENS. A future camel upgrade (or driver edit) that RECOUPLES
