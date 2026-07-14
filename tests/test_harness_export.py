@@ -216,20 +216,24 @@ def test_task10_spec_freezes_present_and_sane():
     assert m, "SERVED_REVISION literal not found in modal_serve.py"
     assert m.group(1) == hs.MODEL_REVISION
     # COHORT_MAX_TOKENS: the COMPLETION CAP, decoupled from the context budget (owner-ratified
-    # correction 2026-07-15 after the seed-1 context wall: CAMEL hardwires token_limit to
+    # correction 2026-07-14 after the seed-1 context wall: CAMEL hardwires token_limit to
     # max_tokens, so the old 4096 served both roles and drove prompt+cap past the served 8192).
     # Anchored on the measured completion distribution; the owner's cap rule draws from an
     # enumerated menu, each >= 2x the observed max.
     assert isinstance(hs.COHORT_MAX_TOKENS, int)
     assert hs.COHORT_MAX_TOKENS in (512, 768, 1024)
-    # COHORT_CONTEXT_BUDGET: the client-side context budget (ChatAgent memory trims to it via the
-    # driver's token_limit override) — a positive multiple of 512, strictly above the cap, and the
-    # necessary serving-cap inequality budget + cap + 256 declared slack <= 8192 (the measured
-    # overhead term makes the frozen arithmetic stricter; recorded verbatim in the spec comment).
+    # COHORT_CONTEXT_BUDGET + OVERHEAD_MAX_MEASURED: the client-side context budget (ChatAgent
+    # memory trims to it via the driver's token_limit override) and the Measurement-2 maximum
+    # overhead promoted to a frozen constant (reviewer hardening 2026-07-14). The inequality below
+    # IS the full frozen derivation — budget + measured overhead + cap + 256 declared slack <=
+    # served --max-model-len 8192 — so a future budget change cannot pass this guard while
+    # violating the real serving-cap constraint.
     assert isinstance(hs.COHORT_CONTEXT_BUDGET, int)
     assert hs.COHORT_CONTEXT_BUDGET > 0 and hs.COHORT_CONTEXT_BUDGET % 512 == 0
     assert hs.COHORT_CONTEXT_BUDGET > hs.COHORT_MAX_TOKENS
-    assert hs.COHORT_CONTEXT_BUDGET + hs.COHORT_MAX_TOKENS + 256 <= 8192
+    assert isinstance(hs.OVERHEAD_MAX_MEASURED, int) and hs.OVERHEAD_MAX_MEASURED > 0
+    assert (hs.COHORT_CONTEXT_BUDGET + hs.OVERHEAD_MAX_MEASURED
+            + hs.COHORT_MAX_TOKENS + 256 <= 8192)
 
 
 # --- Task-10 PURE construction helpers (no OASIS import): the follow-edge builder and the news

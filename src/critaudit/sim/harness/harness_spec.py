@@ -328,7 +328,7 @@ RECSYS_TYPE = "random"   # exact string run_oasis_minimal passes: Platform(recsy
 #     model-table token_limit — rejected: a cohort-substrate value must be REGISTERED in the
 #     spec, not inherited from a library default that can drift on a camel upgrade.
 #
-#     SUPERSEDED 2026-07-15 (owner-ratified correction-by-provenance; sanctioned mutation): the
+#     SUPERSEDED 2026-07-14 (owner-ratified correction-by-provenance; sanctioned mutation): the
 #     4096 above was authored UNDER the coupling constraint — CAMEL hardwires the agent CONTEXT
 #     budget to max_tokens (token_limit = model_config_dict.get("max_tokens") or ...,
 #     base_model.py:530-542) — BEFORE that substrate fact was known, so one constant was forced to
@@ -340,7 +340,7 @@ RECSYS_TYPE = "random"   # exact string run_oasis_minimal passes: Platform(recsy
 #     constructive Measurement 2 below, not log-mining). The driver now DECOUPLES the roles
 #     (token_limit override in oasis_adapter's model subclasses): COHORT_MAX_TOKENS is ONLY the
 #     per-request completion cap; COHORT_CONTEXT_BUDGET below is the memory budget.
-#     MEASURED ANCHOR (Measurement 1, 2026-07-15, offline, seed-1 trace read-only): ALL 164
+#     MEASURED ANCHOR (Measurement 1, 2026-07-14, offline, seed-1 trace read-only): ALL 164
 #     successful LLM tool calls (23 create_post + 94 create_comment + 2 repost + 13 quote_post +
 #     32 do_nothing) reconstructed in the PINNED tokenizer's own hermes tool-call rendering
 #     ('<tool_call>\n{"name":...,"arguments":...}\n</tool_call>' + <|im_end|>) and tokenized at
@@ -352,7 +352,7 @@ COHORT_MAX_TOKENS = 512
 #     COHORT_CONTEXT_BUDGET — the CLIENT-SIDE context budget: what ChatAgent's ScoreBasedContext-
 #     Creator trims agent memory to (chat_agent.py:478-481), fed by the driver's token_limit
 #     override (decoupled from COHORT_MAX_TOKENS, which stays the request's completion cap).
-#     Frozen 2026-07-15 from OFFLINE measurements only (no GPU/endpoint; both arithmetic terms
+#     Frozen 2026-07-14 from OFFLINE measurements only (no GPU/endpoint; both arithmetic terms
 #     OBSERVED, none estimated — the owner's ratification condition):
 #       Measurement 2 (constructive worst case): the ACTUAL client counter is
 #       OpenAITokenCounter(GPT_4O_MINI) (openai_compatible_model.py:437-448; o200k_base encoding,
@@ -372,6 +372,17 @@ COHORT_MAX_TOKENS = 512
 #         B=5632: 5632 + 1731 + 512 + 256 = 8131 <= 8192 -> PASS
 #       (256 = safety slack, DECLARED — the one non-measured term.)
 COHORT_CONTEXT_BUDGET = 5632
+
+#     OVERHEAD_MAX_MEASURED — the constructive Measurement-2 maximum overhead (shape C,
+#     oasis-rounds with 19 tool-call turns; identical at B=5632 and B=6144), measured 2026-07-14;
+#     promoted to a named frozen constant (reviewer hardening) so the consumed-guard can enforce
+#     the FULL derivation inequality (budget + overhead + cap + slack <= served --max-model-len)
+#     rather than a weaker necessary condition — a future budget change cannot pass the guard while
+#     violating the real constraint. RE-MEASURE TRIGGER: any change to the per-round memory shape
+#     (message mix, multi-tool-call turns) or to the tool schemas (action set, signatures,
+#     docstrings) invalidates this maximum — re-run Measurement 2
+#     (.superpowers/sdd/task10-driver-report.md §10.2) and re-derive before relying on the guard.
+OVERHEAD_MAX_MEASURED = 1731
 
 #     FINITE-MEMORY-HORIZON (declared property of the frozen recipe; same status as the
 #     exposure-volume caveat on COUPLING_KNOB): with a finite context budget, late-round agents
