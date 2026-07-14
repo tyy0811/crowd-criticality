@@ -1,8 +1,12 @@
 from __future__ import annotations
 import json
+import os
 import sqlite3
+import tempfile
+import numpy as np
 from critaudit.sim.harness.types import EventRecord, RefreshRecord
 from critaudit.sim.harness.assemble import assemble_harness_run
+from critaudit.sim.harness import harness_spec as hs
 
 
 # The emit actions OASIS logs to `trace`, and the info key naming the content id each one CREATED.
@@ -113,3 +117,274 @@ def export_harness_run(db_path, *, timestamp_col):
     finally:
         con.close()
     return assemble_harness_run(events, refreshes)
+
+
+# =============================================================================================
+# Task 10 — run_oasis_minimal: the OASIS-config integration realizing the FROZEN construction
+# rules (harness_spec + .superpowers/sdd/phaseB-freeze-report.md §4 wiring contract). Everything
+# here is faithful realization of frozen constants; no value below shadows a frozen constant.
+# oasis/camel imports are LAZY (inside the functions) so importing this module for the pure
+# pipeline (export_harness_run + the two builders below) never pulls the heavy OASIS stack.
+# =============================================================================================
+
+# --- Task-10 driver choices (named module constants, disclosed; NOT frozen spec constants) ----
+
+# max_rec_post_len MUST be >= refresh_rec_post_count or refresh's sample branch never fires and the
+# frozen coupling knob is silently capped (freeze report §10 / harness_spec RECSYS_TYPE wiring
+# caution: Platform default max_rec_post_len=2 < frozen refresh_rec_post_count=3, platform.py:66,
+# 276-278). Set to 5 = the largest value OASIS itself ships (Reddit preset refresh_rec_post_count,
+# env.py:96) so the two-stage rec-buffer sample (fill buffer -> subsample refresh_rec_post_count)
+# stays non-degenerate. DISCLOSED alternative: max_rec_post_len == refresh_rec_post_count exactly
+# (a tighter buffer = no headroom for the subsample); 5 is a Task-10 driver choice, set result-blind
+# (a buffer-capacity value, not an emitted-stream quantity), out of harness_spec's scope by its own
+# statement ("exact value = Task-10 driver choice ... not a new spec constant").
+MAX_REC_POST_LEN = 5
+
+# CAMEL model_config_dict["temperature"] for the cohort. 0.7 cites the Task-1 fixture-config
+# precedent (DECISIONS 2026-06-30) reused verbatim by the Task-9 $0 rehearsal + endpoint smoke
+# (task9-rehearsal-report.md §2.1/§9). A sampling temperature is an input-side substrate constant
+# (it does not read any emitted-stream statistic). DISCLOSED: any fixed temperature is a convention;
+# 0.7 is carried forward from the recon/rehearsal for cross-run consistency, not tuned here.
+TEMPERATURE = 0.7
+
+# Client call timeout (seconds) — the Task-9 wiring fact (task9-rehearsal-report.md §3): CAMEL's
+# OpenAICompatibleModel default is 180 s; the rehearsal + endpoint smoke used 600 s. Finite, generous.
+CLIENT_TIMEOUT_S = 600
+
+# Minimal action space (design §3): the four emit tools + do_nothing; REFRESH is AUTOMATIC (fired
+# inside perform_action_by_llm via SocialEnvironment.to_text_prompt -> action.refresh(),
+# agent_environment.py:58-59) so it is NOT listed; search/trend/group/interview EXCLUDED by omission
+# (SocialAgent keeps only the tools whose name is in available_actions, agent.py:99-104). Exact enum
+# names verified from the installed oasis ActionType (social_platform/typing.py:17-49). Resolved to
+# ActionType members lazily inside the build (this module must not import oasis at import time).
+_MINIMAL_ACTION_NAMES = ("create_post", "create_comment", "repost", "quote_post", "do_nothing")
+
+# Neutral synthetic crowd profile (DISCLOSED convention; input-side content, NOT a persona). Every
+# LLM-crowd member gets name = "user_<i>" and this one fixed neutral bio + user_profile — uniform,
+# no topical/behavioural steering (contrast the Task-9 rehearsal's chatty personas, deliberately
+# dropped). The bio -> DB user row (sign_up); the user_profile -> the agent system message
+# ("Your have profile: <...>", config/user.py:59-63). A non-tuned convention choice.
+_CROWD_BIO = "A user of an online social platform."
+_CROWD_USER_PROFILE = "You are an ordinary user of an online social platform."
+_NEWS_BIO = "Automated account that posts news headlines."
+_NEWS_USER_PROFILE = "You are an automated news account."
+
+
+def build_follow_edges(seed, *, n_agents, density):
+    """PURE realization of NETWORK_GRAPH_FORM = directed exact-count G(n, M) (harness_spec:171;
+    freeze report §1/A1): M = round(density*n*(n-1)) DISTINCT ordered pairs (u, v), u != v, drawn
+    uniformly WITHOUT replacement over crowd ids 0..n_agents-1, on the namespaced RNG_STREAM_GRAPH
+    spawn-key stream. Pair space enumerated lexicographically (index i -> u = i//(n-1);
+    r = i%(n-1); v = r if r < u else r+1); sampled via rng.choice(n*(n-1), size=M, replace=False)
+    -> the edge set is a pure function of `seed`. Returns list[(int u, int v)] in drawn order (the
+    order run_oasis_minimal issues the sequential SocialAction.follow calls in)."""
+    n = int(n_agents)
+    m = round(float(density) * n * (n - 1))
+    rng = np.random.default_rng(np.random.SeedSequence(seed, spawn_key=(hs.RNG_STREAM_GRAPH,)))
+    idx = rng.choice(n * (n - 1), size=m, replace=False)
+    edges = []
+    for i in idx:
+        i = int(i)
+        u = i // (n - 1)
+        r = i % (n - 1)
+        v = r if r < u else r + 1
+        edges.append((u, v))
+    return edges
+
+
+def build_news_schedule(seed, *, n_rounds, news_rate, pool=None):
+    """PURE realization of NEWS_SCHEDULE_FORM (harness_spec:231; freeze report §2/B1-B2, B4):
+    independent Bernoulli(news_rate) per round r = 1..n_rounds (ONE uniform per round, consumed in
+    round order) on the RNG_STREAM_NEWS_SCHEDULE stream; on each realized injection, content is drawn
+    uniformly WITH replacement from `pool` (default NEWS_POOL) on the SEPARATE RNG_STREAM_NEWS_CONTENT
+    stream, consumed in injection order. Returns a length-n_rounds list; entry r is the drawn news
+    string if round r injects, else None (submit-in-round-r / readable-from-r+1 is enforced by the
+    driver's step timing, not encoded here). Namespaced spawn-key streams make the schedule/content
+    draws independent of the graph draw (perturbing one cannot move another)."""
+    if pool is None:
+        pool = hs.NEWS_POOL
+    rng_s = np.random.default_rng(np.random.SeedSequence(seed, spawn_key=(hs.RNG_STREAM_NEWS_SCHEDULE,)))
+    rng_c = np.random.default_rng(np.random.SeedSequence(seed, spawn_key=(hs.RNG_STREAM_NEWS_CONTENT,)))
+    out = []
+    for _ in range(int(n_rounds)):
+        if float(rng_s.random()) < float(news_rate):
+            out.append(pool[int(rng_c.integers(len(pool)))])
+        else:
+            out.append(None)
+    return out
+
+
+def _run_db_path(seed):
+    """Unique per-(seed) run directory for the trace sqlite (a run ARTIFACT, never committed). Base
+    is HARNESS_COHORT_DIR if set (the controller points it at the session scratchpad), else a stable
+    subdir of the system temp. The db file is removed if stale so each run starts clean."""
+    base = os.environ.get("HARNESS_COHORT_DIR") or os.path.join(
+        tempfile.gettempdir(), "critaudit_cohort")
+    run_dir = os.path.join(base, f"seed_{seed}")
+    os.makedirs(run_dir, exist_ok=True)
+    db_path = os.path.join(run_dir, "oasis.db")
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    return db_path
+
+
+def _make_counting_model(*, model_id, endpoint_url, token, max_tokens, temperature, timeout):
+    """Build the cohort model backend on CAMEL's OPENAI_COMPATIBLE_MODEL client path
+    (task9-rehearsal-report.md §3), wrapped in a thin driver-side subclass that SUMS per-call token
+    usage across every model call. OASIS discards the ChatAgentResponse (env.step gathers but never
+    collects _perform_llm_action's return, env.py:190-193), so usage is captured at the backend:
+    the non-stream ChatCompletion returned by _arun/_run carries `.usage` (prompt/completion/total),
+    the SAME field CAMEL itself reads for response.info['usage'] (chat_agent.py:2542-2544). Overriding
+    the inner _run/_arun (not the public run/arun, which the base metaclass wraps + @observe
+    decorates) captures every call including CAMEL's internal tool-loop repeats. Accumulation is
+    synchronous (no await between the super() return and the += ), so OASIS's asyncio.gather
+    per-round fan-out is race-free (single-threaded event loop, no interleave at the mutation)."""
+    from camel.models.openai_compatible_model import OpenAICompatibleModel
+
+    class _UsageAccountingModel(OpenAICompatibleModel):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.usage_counts = {"prompt": 0, "completion": 0, "total": 0, "n_calls": 0}
+
+        def _accumulate(self, result):
+            self.usage_counts["n_calls"] += 1
+            usage = getattr(result, "usage", None)
+            if usage is not None:
+                self.usage_counts["prompt"] += int(getattr(usage, "prompt_tokens", 0) or 0)
+                self.usage_counts["completion"] += int(getattr(usage, "completion_tokens", 0) or 0)
+                self.usage_counts["total"] += int(getattr(usage, "total_tokens", 0) or 0)
+            return result
+
+        def _run(self, *a, **k):
+            return self._accumulate(super()._run(*a, **k))
+
+        async def _arun(self, *a, **k):
+            return self._accumulate(await super()._arun(*a, **k))
+
+    return _UsageAccountingModel(
+        model_type=model_id,
+        model_config_dict={"temperature": temperature, "max_tokens": max_tokens},
+        api_key=token,
+        url=endpoint_url,
+        timeout=timeout,
+    )
+
+
+def _new_user_info(*, name, bio, user_profile):
+    """A UserInfo whose to_twitter_system_message uses name + profile.other_info.user_profile
+    (config/user.py:50-63). recsys_type='twitter' selects the non-Reddit message form (independent
+    of the Platform's recsys_type)."""
+    from oasis.social_platform.config import UserInfo
+    return UserInfo(
+        name=name,
+        description=bio,
+        profile={"nodes": [], "edges": [], "other_info": {"user_profile": user_profile}},
+        recsys_type="twitter",
+    )
+
+
+async def _run_oasis_minimal_async(*, operating_point, model, db_path, edges, schedule):
+    """The awaited OASIS wiring (freeze report §4 ordered recipe). `model` is the shared counting
+    backend; `edges`/`schedule` are the pure-builder outputs. Fail-closed: a failed follow insert
+    raises (no silent partial graph)."""
+    from oasis import (ActionType, AgentGraph, LLMAction, ManualAction, Platform,
+                       SocialAgent, make)
+    from oasis.social_platform.channel import Channel
+    from oasis.social_platform.typing import RecsysType
+
+    n_agents = int(operating_point["n_agents"])
+    n_rounds = int(operating_point["n_rounds"])
+    social_influence = int(operating_point["social_influence"])   # = refresh_rec_post_count knob
+    available = [ActionType(name) for name in _MINIMAL_ACTION_NAMES]
+
+    # 1. Build the graph: n_agents LLM crowd (ids 0..n_agents-1) + 1 manual news user (id n_agents).
+    graph = AgentGraph()
+    for i in range(n_agents):
+        graph.add_agent(SocialAgent(
+            agent_id=i,
+            user_info=_new_user_info(name=f"user_{i}", bio=_CROWD_BIO,
+                                     user_profile=_CROWD_USER_PROFILE),
+            model=model, available_actions=available))
+    news_id = n_agents          # NEWS_AUTHOR_RULE: id = n_agents (last graph member, excluded from
+    #                             the crowd count); == hs.NEWS_USER_AGENT_ID at the frozen op-point.
+    # NEWS-USER MODEL — verify-don't-relay correction of the freeze report's `model=None` claim:
+    # model=None is NOT model-free here. ChatAgent resolves None -> ModelFactory.create(DEFAULT =
+    # gpt-4.1-mini) -> OpenAI client, which RAISES at construction without OPENAI_API_KEY
+    # (empirically confirmed, chat_agent.py:595-600). The news user shares the crowd backend instead
+    # — BEHAVIOUR-IDENTICAL: it is listed only with ManualAction, and env.step dispatches
+    # ManualAction -> perform_action_by_data, which calls the resolved SocialAction with NO model
+    # call (agent.py:278-294). All four frozen NEWS_AUTHOR_RULE properties hold (dedicated /
+    # never-LLM-driven [driver-enforced] / no-follow-edges / excluded-from-n_agents); token counts
+    # are unaffected (the news backend is never invoked). Flagged for controller ratification.
+    graph.add_agent(SocialAgent(
+        agent_id=news_id,
+        user_info=_new_user_info(name="news_source", bio=_NEWS_BIO,
+                                 user_profile=_NEWS_USER_PROFILE),
+        model=model, available_actions=available))
+
+    # 2. Custom Platform (recsys_type frozen -> RecsysType enum; refresh_rec_post_count = the frozen
+    #    coupling knob; max_rec_post_len >= that count so the knob is not silently capped). Passing
+    #    recsys_type explicitly is REQUIRED (Platform default is "reddit", platform.py:64).
+    platform = Platform(
+        db_path=db_path,
+        channel=Channel(),
+        recsys_type=RecsysType(hs.RECSYS_TYPE),
+        refresh_rec_post_count=social_influence,
+        max_rec_post_len=MAX_REC_POST_LEN,
+    )
+    env = make(agent_graph=graph, platform=platform, database_path=db_path)
+
+    # 3. Start platform + sign up all n_agents+1 members (env.reset -> generate_custom_agents).
+    await env.reset()
+
+    # 4. Realize the follow graph: sequential awaited SocialAction.follow in drawn order, post-reset
+    #    pre-round-1, each mirrored into the in-memory graph (add_edge). DB `follow` row is the
+    #    authoritative realized graph. Fail-closed on a failed insert.
+    for (u, v) in edges:
+        result = await graph.get_agent(u).env.action.follow(v)
+        if not (isinstance(result, dict) and result.get("success")):
+            raise RuntimeError(f"follow realization failed for edge ({u} -> {v}): {result!r}")
+        graph.add_edge(u, v)
+
+    # 5. Round loop r = 1..n_rounds: every LLM crowd agent acts via LLMAction; the news user is
+    #    added to round r's SAME step dict with ManualAction(CREATE_POST) iff round r injects
+    #    (submit-in-round-r, readable-from-r+1). REFRESH fires automatically inside each LLMAction.
+    news_agent = graph.get_agent(news_id)
+    for r in range(n_rounds):
+        actions = {graph.get_agent(i): LLMAction() for i in range(n_agents)}
+        content = schedule[r]
+        if content is not None:
+            actions[news_agent] = ManualAction(
+                action_type=ActionType.CREATE_POST, action_args={"content": content})
+        await env.step(actions)
+
+    # 6. Stop the platform task cleanly.
+    await env.close()
+
+
+def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
+    """OASIS-config integration (plan Task 10): build the frozen crowd at `operating_point`, run it
+    through the OpenAI-compatible `endpoint_url` model `model_id`, and return
+    (db_path, token_counts). All construction is dictated by the FROZEN rules in harness_spec +
+    freeze report §4; see the module constants above for the disclosed Task-10 driver choices
+    (max_rec_post_len=5, temperature=0.7). token_counts = {"prompt","completion","total","n_calls"}
+    tallied by the driver-side accounting backend. The trace sqlite at db_path is a run artifact
+    (never committed); export_harness_run(db_path, timestamp_col="created_at") reads it downstream."""
+    import asyncio
+
+    db_path = _run_db_path(seed)
+    model = _make_counting_model(
+        model_id=model_id, endpoint_url=endpoint_url, token=token,
+        max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S)
+
+    edges = build_follow_edges(
+        seed, n_agents=operating_point["n_agents"], density=operating_point["network_density"])
+    schedule = build_news_schedule(
+        seed, n_rounds=operating_point["n_rounds"], news_rate=operating_point["news_rate"])
+
+    asyncio.run(_run_oasis_minimal_async(
+        operating_point=operating_point, model=model, db_path=db_path,
+        edges=edges, schedule=schedule))
+
+    token_counts = dict(model.usage_counts)
+    return db_path, token_counts

@@ -220,3 +220,67 @@ def test_task10_spec_freezes_present_and_sane():
     # --max-model-len 8192 with headroom
     assert isinstance(hs.COHORT_MAX_TOKENS, int)
     assert 2048 < hs.COHORT_MAX_TOKENS <= 8192
+
+
+# --- Task-10 PURE construction helpers (no OASIS import): the follow-edge builder and the news
+#     schedule builder realizing the frozen NETWORK/NEWS rules. TDD'd here against the frozen
+#     constants; run_oasis_minimal drives OASIS with exactly these two outputs. ------------------
+
+def test_build_follow_edges_operating_point_count_and_shape():
+    from critaudit.sim.harness.oasis_adapter import build_follow_edges
+    from critaudit.sim.harness import harness_spec as hs
+    n = hs.OPERATING_POINT["n_agents"]           # 50
+    d = hs.OPERATING_POINT["network_density"]    # 0.10
+    edges = build_follow_edges(hs.COHORT_SEEDS[0], n_agents=n, density=d)
+    assert len(edges) == 245                      # round(0.10 * 50 * 49) — the frozen exact-count M
+    assert all(u != v for u, v in edges)          # no self-loops (u != v; the n*(n-1) denominator)
+    assert len(set(edges)) == len(edges)          # distinct ordered pairs (without replacement)
+    assert all(0 <= u < n and 0 <= v < n for u, v in edges)   # crowd-only ids 0..n_agents-1
+    assert all(isinstance(u, int) and isinstance(v, int) for u, v in edges)
+
+
+def test_build_follow_edges_deterministic_and_distinct_across_seeds():
+    from critaudit.sim.harness.oasis_adapter import build_follow_edges
+    e0a = build_follow_edges(20260627, n_agents=50, density=0.10)
+    e0b = build_follow_edges(20260627, n_agents=50, density=0.10)
+    e1 = build_follow_edges(20260628, n_agents=50, density=0.10)
+    assert e0a == e0b            # byte-determinism: pure function of the seed
+    assert e0a != e1            # distinct across (consecutive) seeds
+
+
+def test_build_follow_edges_stream_independent_of_news_consumption():
+    # namespaced spawn-key streams: perturbing the news draws (any amount, any rate) must NOT
+    # change the graph — the frozen decoupling that makes density a clean axis.
+    from critaudit.sim.harness.oasis_adapter import build_follow_edges, build_news_schedule
+    seed = 20260627
+    before = build_follow_edges(seed, n_agents=50, density=0.10)
+    build_news_schedule(seed, n_rounds=1000, news_rate=0.9)   # heavy schedule+content consumption
+    build_news_schedule(seed, n_rounds=7, news_rate=0.3)
+    after = build_follow_edges(seed, n_agents=50, density=0.10)
+    assert before == after
+
+
+def test_build_news_schedule_shape_range_and_determinism():
+    from critaudit.sim.harness.oasis_adapter import build_news_schedule
+    from critaudit.sim.harness import harness_spec as hs
+    nr = hs.OPERATING_POINT["n_rounds"]          # 20
+    rate = hs.OPERATING_POINT["news_rate"]       # 0.05
+    s0a = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=nr, news_rate=rate)
+    s0b = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=nr, news_rate=rate)
+    assert len(s0a) == nr                         # one entry per round
+    assert s0a == s0b                             # deterministic per seed
+    # each entry is None (no inject) or an in-range NEWS_POOL string (pool index in range)
+    assert all(x is None or x in hs.NEWS_POOL for x in s0a)
+
+
+def test_build_news_schedule_rate_bounds_and_seed_variation():
+    from critaudit.sim.harness.oasis_adapter import build_news_schedule
+    from critaudit.sim.harness import harness_spec as hs
+    all_on = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=20, news_rate=1.0)
+    all_off = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=20, news_rate=0.0)
+    assert all(x is not None and x in hs.NEWS_POOL for x in all_on)  # rate 1.0 -> every round injects
+    assert all(x is None for x in all_off)                          # rate 0.0 -> none
+    # the realized inject pattern varies across (consecutive) seeds at an intermediate rate
+    a = [x is None for x in build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=300, news_rate=0.5)]
+    b = [x is None for x in build_news_schedule(hs.COHORT_SEEDS[1], n_rounds=300, news_rate=0.5)]
+    assert a != b
