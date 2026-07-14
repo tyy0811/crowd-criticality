@@ -327,4 +327,56 @@ RECSYS_TYPE = "random"   # exact string run_oasis_minimal passes: Platform(recsy
 #     serving cap. Alternative disclosed: omit max_tokens entirely -> CAMEL falls back to its own
 #     model-table token_limit — rejected: a cohort-substrate value must be REGISTERED in the
 #     spec, not inherited from a library default that can drift on a camel upgrade.
-COHORT_MAX_TOKENS = 4096
+#
+#     SUPERSEDED 2026-07-15 (owner-ratified correction-by-provenance; sanctioned mutation): the
+#     4096 above was authored UNDER the coupling constraint — CAMEL hardwires the agent CONTEXT
+#     budget to max_tokens (token_limit = model_config_dict.get("max_tokens") or ...,
+#     base_model.py:530-542) — BEFORE that substrate fact was known, so one constant was forced to
+#     serve BOTH the completion cap and the memory budget and was sized for the budget role.
+#     EVIDENCE (seed-1, 20260627): prompts grew to the 4096 wall by round ~5, then
+#     prompt + 4096 completion allowance exceeded the served --max-model-len 8192 -> 1,021 vLLM
+#     400-rejections, silently swallowed by OASIS's per-turn catch (emit histogram 18/48/49/14/3
+#     then zeros; rejection bodies censored at the validation threshold, value=4097 — hence the
+#     constructive Measurement 2 below, not log-mining). The driver now DECOUPLES the roles
+#     (token_limit override in oasis_adapter's model subclasses): COHORT_MAX_TOKENS is ONLY the
+#     per-request completion cap; COHORT_CONTEXT_BUDGET below is the memory budget.
+#     MEASURED ANCHOR (Measurement 1, 2026-07-15, offline, seed-1 trace read-only): ALL 164
+#     successful LLM tool calls (23 create_post + 94 create_comment + 2 repost + 13 quote_post +
+#     32 do_nothing) reconstructed in the PINNED tokenizer's own hermes tool-call rendering
+#     ('<tool_call>\n{"name":...,"arguments":...}\n</tool_call>' + <|im_end|>) and tokenized at
+#     the pinned revision -> n=164, mean 41.3, p99 56.1, MAX 59 tokens (top-5: 59/58/55/55/55).
+#     Owner cap rule: "512 >= 2x observed max" FIRES (512 >= 118) -> 512, basis: clears the
+#     observed max (59 tokens) by 8.7x. Full tables: .superpowers/sdd/task10-driver-report.md §10.
+COHORT_MAX_TOKENS = 512
+
+#     COHORT_CONTEXT_BUDGET — the CLIENT-SIDE context budget: what ChatAgent's ScoreBasedContext-
+#     Creator trims agent memory to (chat_agent.py:478-481), fed by the driver's token_limit
+#     override (decoupled from COHORT_MAX_TOKENS, which stays the request's completion cap).
+#     Frozen 2026-07-15 from OFFLINE measurements only (no GPU/endpoint; both arithmetic terms
+#     OBSERVED, none estimated — the owner's ratification condition):
+#       Measurement 2 (constructive worst case): the ACTUAL client counter is
+#       OpenAITokenCounter(GPT_4O_MINI) (openai_compatible_model.py:437-448; o200k_base encoding,
+#       +3/message + role tokens + final +3, token_counting.py:118-230). Synthetic histories tuned
+#       so THAT counter counts EXACTLY B; server side = pinned Qwen tokenizer
+#       apply_chat_template(msgs, tools=<the REAL 5 minimal-action schemas via the driver's
+#       FunctionTool path>, add_generation_prompt=True). overhead(B) = server - B, over
+#       B in {5632, 6144} x 3 adversarial shapes:
+#         few-large +820 | many-small +832 | oasis-rounds (19 tool-call turns) +1731 (both B)
+#       -> overhead_max = 1731. Decomposition (all observed): 696 fixed tool-schema tokens (the
+#       client counter never counts tools); +1/msg template delta (server 5 vs client 4);
+#       +2.37% qwen-vs-o200k content mismatch; +51/turn assistant tool-call under-count (the
+#       client counts a tool_calls list as ~0, the server renders the full call JSON) x 19 turns.
+#     DERIVATION (verbatim): COHORT_CONTEXT_BUDGET = the largest multiple of 512 satisfying
+#       B + overhead_max(B) + COHORT_MAX_TOKENS + 256 slack <= 8192 (served --max-model-len):
+#         B=6144: 6144 + 1731 + 512 + 256 = 8643 >  8192 -> FAIL
+#         B=5632: 5632 + 1731 + 512 + 256 = 8131 <= 8192 -> PASS
+#       (256 = safety slack, DECLARED — the one non-measured term.)
+COHORT_CONTEXT_BUDGET = 5632
+
+#     FINITE-MEMORY-HORIZON (declared property of the frozen recipe; same status as the
+#     exposure-volume caveat on COUPLING_KNOB): with a finite context budget, late-round agents
+#     TRUNCATE their oldest messages — the crowd has a memory horizon BY CONSTRUCTION. Memory
+#     truncation can plausibly shape cascade statistics (agents forgetting early posts changes
+#     what they can still reply to). Declared NOW as an assumption surface of the harness; it must
+#     not be discovered later as an unrecorded confound. Downstream interpretation of cascade/tree
+#     statistics inherits this property.

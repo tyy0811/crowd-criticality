@@ -132,7 +132,7 @@ def test_construction_half_no_llm(tmp_path):
         model_config_dict={"temperature": 0.7, "max_tokens": 4096}, timeout=5)
     news_model = _make_news_sentinel_model(
         model_id="construction-never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
-        max_tokens=4096, temperature=0.7, timeout=5)
+        max_tokens=4096, temperature=0.7, timeout=5, context_budget=5632)
     available = [ActionType(name) for name in _MINIMAL_ACTION_NAMES]
 
     async def build_and_run():
@@ -205,12 +205,15 @@ def test_usage_accounting_sums_across_calls():
             self.usage = usage
 
     m = _make_counting_model(model_id="never-called", endpoint_url="http://127.0.0.1:1/v1",
-                             token="unused", max_tokens=64, temperature=0.7, timeout=5)
+                             token="unused", max_tokens=64, temperature=0.7, timeout=5,
+                             context_budget=1024)
     assert m.usage_counts == {"prompt": 0, "completion": 0, "total": 0, "n_calls": 0}
     m._accumulate(_FakeResult(_FakeUsage(10, 3, 13)))
     m._accumulate(_FakeResult(_FakeUsage(20, 5, 25)))
     m._accumulate(_FakeResult(None))          # a usage-less result counts the call, adds no tokens
     assert m.usage_counts == {"prompt": 30, "completion": 8, "total": 38, "n_calls": 3}
+    # per-call usage log (owner-ratified: future anchors must never depend on sums alone)
+    assert m.usage_log == [(10, 3), (20, 5), (0, 0)]
 
 
 # --- @slow (imports CAMEL+OASIS; $0, NO network): the news user's FAIL-CLOSED SENTINEL model
@@ -230,7 +233,7 @@ def test_news_sentinel_constructs_but_blocks_all_inference():
 
     sentinel = _make_news_sentinel_model(
         model_id="never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
-        max_tokens=64, temperature=0.7, timeout=5)
+        max_tokens=64, temperature=0.7, timeout=5, context_budget=1024)
 
     # constructs cleanly INSIDE a SocialAgent (subclasses ChatAgent): every construction-time touch
     # (ModelManager wrap, token_counter, token_limit -> memory context creator) works.
@@ -255,3 +258,66 @@ def test_news_sentinel_constructs_but_blocks_all_inference():
         sentinel._request_chat_completion(msgs)
     with pytest.raises(AssertionError, match="model-free"):
         asyncio.run(sentinel._arequest_chat_completion(msgs))
+
+
+# --- @slow (imports CAMEL; $0, NO network): cap/budget DECOUPLING tripwire (owner-ratified
+#     2026-07-15). CAMEL hardwires the agent context budget to max_tokens (token_limit =
+#     model_config_dict.get("max_tokens") or ..., base_model.py:530-542) — the seed-1 context-wall
+#     root cause. The driver subclasses override token_limit to COHORT_CONTEXT_BUDGET while requests
+#     keep max_tokens = COHORT_MAX_TOKENS. A future camel upgrade (or driver edit) that RECOUPLES
+#     them fails here loudly. ----------------------------------------------------------------------
+
+@pytest.mark.slow
+def test_decoupling_tripwire_token_limit_vs_max_tokens():
+    from critaudit.sim.harness import harness_spec as hs
+    from critaudit.sim.harness.oasis_adapter import (_make_counting_model,
+                                                     _make_news_sentinel_model)
+    for factory in (_make_counting_model, _make_news_sentinel_model):
+        m = factory(model_id="never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
+                    max_tokens=hs.COHORT_MAX_TOKENS, temperature=0.7, timeout=5,
+                    context_budget=hs.COHORT_CONTEXT_BUDGET)
+        assert m.token_limit == hs.COHORT_CONTEXT_BUDGET          # memory budget (context creator)
+        assert m.model_config_dict["max_tokens"] == hs.COHORT_MAX_TOKENS  # per-request completion cap
+        assert m.token_limit != m.model_config_dict["max_tokens"]         # DECOUPLED, by construction
+
+
+# --- @slow (imports CAMEL+OASIS; $0, NO network): the loud-400 guard. OASIS swallows per-turn model
+#     errors (perform_action_by_llm catches ALL and returns the exception, agent.py:153-155) — the
+#     seed-1 wall produced 1,021 silent vLLM 400s and rounds of zero emits. The accounting model
+#     counts 4xx rejections; _run_oasis_minimal_async raises at the FIRST nonzero after each round.
+#     Injection: monkeypatch the PARENT class's _arun (so the subclass wrapper still counts). --------
+
+@pytest.mark.slow
+def test_loud_400_guard_raises_at_first_rejection(tmp_path, monkeypatch):
+    import asyncio
+
+    from camel.models.openai_compatible_model import OpenAICompatibleModel
+
+    from critaudit.sim.harness import harness_spec as hs
+    from critaudit.sim.harness.oasis_adapter import (_make_counting_model,
+                                                     _make_news_sentinel_model,
+                                                     _run_oasis_minimal_async)
+
+    class _Fake400(Exception):
+        status_code = 400        # the attribute openai.BadRequestError carries (4xx detection key)
+
+    async def _reject(self, *a, **k):
+        raise _Fake400("This model's maximum context length is 8192 tokens... (synthetic)")
+
+    monkeypatch.setattr(OpenAICompatibleModel, "_arun", _reject)
+    model = _make_counting_model(
+        model_id="never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
+        max_tokens=hs.COHORT_MAX_TOKENS, temperature=0.7, timeout=5,
+        context_budget=hs.COHORT_CONTEXT_BUDGET)
+    news = _make_news_sentinel_model(
+        model_id="never-called", endpoint_url="http://127.0.0.1:1/v1", token="unused",
+        max_tokens=hs.COHORT_MAX_TOKENS, temperature=0.7, timeout=5,
+        context_budget=hs.COHORT_CONTEXT_BUDGET)
+    op = {"n_agents": 2, "n_rounds": 3, "social_influence": 3}
+    with pytest.raises(AssertionError, match="rejection"):
+        asyncio.run(_run_oasis_minimal_async(
+            operating_point=op, model=model, news_model=news,
+            db_path=str(tmp_path / "reject.db"), edges=[], schedule=[None, None, None]))
+    # fail-at-rejection-one, round granularity: round 1's two swallowed 400s (2 agents) trip the
+    # guard BEFORE round 2 runs — the run must NOT silently complete all 3 rounds.
+    assert model.rejections == 2

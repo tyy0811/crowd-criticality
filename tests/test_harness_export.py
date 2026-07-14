@@ -215,11 +215,21 @@ def test_task10_spec_freezes_present_and_sane():
         m = re.search(r'^SERVED_REVISION\s*=\s*"([0-9a-f]{40})"', f.read(), re.M)
     assert m, "SERVED_REVISION literal not found in modal_serve.py"
     assert m.group(1) == hs.MODEL_REVISION
-    # COHORT_MAX_TOKENS: registered instrument-integrity budget (CAMEL max_tokens doubles as the
-    # agent context budget); must clear the truncation-prone regime and stay under the served
-    # --max-model-len 8192 with headroom
+    # COHORT_MAX_TOKENS: the COMPLETION CAP, decoupled from the context budget (owner-ratified
+    # correction 2026-07-15 after the seed-1 context wall: CAMEL hardwires token_limit to
+    # max_tokens, so the old 4096 served both roles and drove prompt+cap past the served 8192).
+    # Anchored on the measured completion distribution; the owner's cap rule draws from an
+    # enumerated menu, each >= 2x the observed max.
     assert isinstance(hs.COHORT_MAX_TOKENS, int)
-    assert 2048 < hs.COHORT_MAX_TOKENS <= 8192
+    assert hs.COHORT_MAX_TOKENS in (512, 768, 1024)
+    # COHORT_CONTEXT_BUDGET: the client-side context budget (ChatAgent memory trims to it via the
+    # driver's token_limit override) — a positive multiple of 512, strictly above the cap, and the
+    # necessary serving-cap inequality budget + cap + 256 declared slack <= 8192 (the measured
+    # overhead term makes the frozen arithmetic stricter; recorded verbatim in the spec comment).
+    assert isinstance(hs.COHORT_CONTEXT_BUDGET, int)
+    assert hs.COHORT_CONTEXT_BUDGET > 0 and hs.COHORT_CONTEXT_BUDGET % 512 == 0
+    assert hs.COHORT_CONTEXT_BUDGET > hs.COHORT_MAX_TOKENS
+    assert hs.COHORT_CONTEXT_BUDGET + hs.COHORT_MAX_TOKENS + 256 <= 8192
 
 
 # --- Task-10 PURE construction helpers (no OASIS import): the follow-edge builder and the news

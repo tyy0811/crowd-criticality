@@ -228,7 +228,8 @@ def _run_db_path(seed):
     return db_path
 
 
-def _make_counting_model(*, model_id, endpoint_url, token, max_tokens, temperature, timeout):
+def _make_counting_model(*, model_id, endpoint_url, token, max_tokens, temperature, timeout,
+                         context_budget):
     """Build the cohort model backend on CAMEL's OPENAI_COMPATIBLE_MODEL client path
     (task9-rehearsal-report.md §3), wrapped in a thin driver-side subclass that SUMS per-call token
     usage across every model call. OASIS discards the ChatAgentResponse (env.step gathers but never
@@ -238,28 +239,70 @@ def _make_counting_model(*, model_id, endpoint_url, token, max_tokens, temperatu
     the inner _run/_arun (not the public run/arun, which the base metaclass wraps + @observe
     decorates) captures every call including CAMEL's internal tool-loop repeats. Accumulation is
     synchronous (no await between the super() return and the += ), so OASIS's asyncio.gather
-    per-round fan-out is race-free (single-threaded event loop, no interleave at the mutation)."""
+    per-round fan-out is race-free (single-threaded event loop, no interleave at the mutation).
+
+    DECOUPLING (owner-ratified 2026-07-15, the seed-1 context-wall correction): CAMEL hardwires the
+    agent CONTEXT budget to max_tokens (token_limit = model_config_dict.get("max_tokens") or ...,
+    base_model.py:530-542) — one constant serving both the completion cap AND the memory budget is
+    what drove prompt + 4096 past the served 8192 (1,021 silently-swallowed 400s, seed-1). The
+    token_limit property is OVERRIDDEN to `context_budget` (= hs.COHORT_CONTEXT_BUDGET at the
+    cohort) while requests keep max_tokens (= hs.COHORT_MAX_TOKENS, the measured completion cap);
+    ChatAgent's context creator reads the override (chat_agent.py:478-481).
+
+    LOUD-400 GUARD (part 1 of 2): OASIS swallows per-turn model errors (perform_action_by_llm
+    catches ALL and returns the exception, agent.py:153-155), so server rejections are counted HERE:
+    any raised error carrying a 4xx `status_code` (the openai.APIStatusError/BadRequestError shape —
+    covers real vLLM 400s and synthetic test errors) increments `rejections` before re-raising.
+    _run_oasis_minimal_async (part 2) raises at the first nonzero after every round.
+
+    PER-CALL USAGE LOG (owner-ratified): `usage_log` records (prompt_tokens, completion_tokens) per
+    call, so future anchors never depend on sums alone."""
     from camel.models.openai_compatible_model import OpenAICompatibleModel
 
     class _UsageAccountingModel(OpenAICompatibleModel):
         def __init__(self, *a, **k):
             super().__init__(*a, **k)
             self.usage_counts = {"prompt": 0, "completion": 0, "total": 0, "n_calls": 0}
+            self.usage_log = []          # per-call (prompt_tokens, completion_tokens)
+            self.rejections = 0          # 4xx server rejections (the loud-400 guard reads this)
+
+        @property
+        def token_limit(self):
+            # DECOUPLED context budget — NOT max_tokens (base_model.py:530-542 hardwires them).
+            return context_budget
+
+        def _count_rejection(self, exc):
+            sc = getattr(exc, "status_code", None)
+            if isinstance(sc, int) and 400 <= sc < 500:
+                self.rejections += 1
 
         def _accumulate(self, result):
             self.usage_counts["n_calls"] += 1
             usage = getattr(result, "usage", None)
+            p = int(getattr(usage, "prompt_tokens", 0) or 0) if usage is not None else 0
+            c = int(getattr(usage, "completion_tokens", 0) or 0) if usage is not None else 0
             if usage is not None:
-                self.usage_counts["prompt"] += int(getattr(usage, "prompt_tokens", 0) or 0)
-                self.usage_counts["completion"] += int(getattr(usage, "completion_tokens", 0) or 0)
+                self.usage_counts["prompt"] += p
+                self.usage_counts["completion"] += c
                 self.usage_counts["total"] += int(getattr(usage, "total_tokens", 0) or 0)
+            self.usage_log.append((p, c))
             return result
 
         def _run(self, *a, **k):
-            return self._accumulate(super()._run(*a, **k))
+            try:
+                result = super()._run(*a, **k)
+            except Exception as e:
+                self._count_rejection(e)
+                raise
+            return self._accumulate(result)
 
         async def _arun(self, *a, **k):
-            return self._accumulate(await super()._arun(*a, **k))
+            try:
+                result = await super()._arun(*a, **k)
+            except Exception as e:
+                self._count_rejection(e)
+                raise
+            return self._accumulate(result)
 
     return _UsageAccountingModel(
         model_type=model_id,
@@ -274,7 +317,8 @@ _NEWS_SENTINEL_MSG = ("news user is model-free by frozen NEWS_AUTHOR_RULE — a 
                       "driver bug routed an LLM action to it")
 
 
-def _make_news_sentinel_model(*, model_id, endpoint_url, token, max_tokens, temperature, timeout):
+def _make_news_sentinel_model(*, model_id, endpoint_url, token, max_tokens, temperature, timeout,
+                              context_budget):
     """FAIL-CLOSED sentinel backend for the manual news user (controller ratification 2026-07-14,
     strengthening the model=None correction): the frozen NEWS_AUTHOR_RULE "never LLM-driven" is
     ENFORCED at runtime, not assumed — sharing a live backend would let a driver bug that routes an
@@ -287,10 +331,17 @@ def _make_news_sentinel_model(*, model_id, endpoint_url, token, max_tokens, temp
     backend ONLY via public run/arun (chat_agent.py:2184/2248/2838/3576; model_manager.py:229/274),
     which funnel to _run/_arun (base_model.py:428/480); the ONLY client-touching methods on
     OpenAICompatibleModel are the six _request_* helpers (openai_compatible_model.py:281-430), all
-    called from _run/_arun — overridden too (belt-and-braces), so NO inference path escapes."""
+    called from _run/_arun — overridden too (belt-and-braces), so NO inference path escapes.
+    `context_budget` mirrors the counting model's token_limit decoupling (constructor-consistency,
+    owner-ratified 2026-07-15): construction-time touches see the same budget the crowd sees."""
     from camel.models.openai_compatible_model import OpenAICompatibleModel
 
     class _NewsSentinelModel(OpenAICompatibleModel):
+        @property
+        def token_limit(self):
+            # same decoupling as the counting model (base_model.py:530-542 hardwires otherwise)
+            return context_budget
+
         def _sentinel(self):
             raise AssertionError(_NEWS_SENTINEL_MSG)
 
@@ -395,29 +446,45 @@ async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_pat
     # 3. Start platform + sign up all n_agents+1 members (env.reset -> generate_custom_agents).
     await env.reset()
 
-    # 4. Realize the follow graph: sequential awaited SocialAction.follow in drawn order, post-reset
-    #    pre-round-1, each mirrored into the in-memory graph (add_edge). DB `follow` row is the
-    #    authoritative realized graph. Fail-closed on a failed insert.
-    for (u, v) in edges:
-        result = await graph.get_agent(u).env.action.follow(v)
-        if not (isinstance(result, dict) and result.get("success")):
-            raise RuntimeError(f"follow realization failed for edge ({u} -> {v}): {result!r}")
-        graph.add_edge(u, v)
+    try:
+        # 4. Realize the follow graph: sequential awaited SocialAction.follow in drawn order,
+        #    post-reset pre-round-1, each mirrored into the in-memory graph (add_edge). DB `follow`
+        #    row is the authoritative realized graph. Fail-closed on a failed insert.
+        for (u, v) in edges:
+            result = await graph.get_agent(u).env.action.follow(v)
+            if not (isinstance(result, dict) and result.get("success")):
+                raise RuntimeError(f"follow realization failed for edge ({u} -> {v}): {result!r}")
+            graph.add_edge(u, v)
 
-    # 5. Round loop r = 1..n_rounds: every LLM crowd agent acts via LLMAction; the news user is
-    #    added to round r's SAME step dict with ManualAction(CREATE_POST) iff round r injects
-    #    (submit-in-round-r, readable-from-r+1). REFRESH fires automatically inside each LLMAction.
-    news_agent = graph.get_agent(news_id)
-    for r in range(n_rounds):
-        actions = {graph.get_agent(i): LLMAction() for i in range(n_agents)}
-        content = schedule[r]
-        if content is not None:
-            actions[news_agent] = ManualAction(
-                action_type=ActionType.CREATE_POST, action_args={"content": content})
-        await env.step(actions)
+        # 5. Round loop r = 1..n_rounds: every LLM crowd agent acts via LLMAction; the news user is
+        #    added to round r's SAME step dict with ManualAction(CREATE_POST) iff round r injects
+        #    (submit-in-round-r, readable-from-r+1). REFRESH fires automatically inside each
+        #    LLMAction. LOUD-400 GUARD (part 2, owner-ratified 2026-07-15): OASIS swallows per-turn
+        #    model errors (agent.py:153-155) — the seed-1 wall produced 1,021 silent 400s and rounds
+        #    of zero emits — so the rejection counter is checked after EVERY round and the run fails
+        #    at rejection one, round granularity.
+        news_agent = graph.get_agent(news_id)
+        for r in range(n_rounds):
+            actions = {graph.get_agent(i): LLMAction() for i in range(n_agents)}
+            content = schedule[r]
+            if content is not None:
+                actions[news_agent] = ManualAction(
+                    action_type=ActionType.CREATE_POST, action_args={"content": content})
+            await env.step(actions)
+            if model.rejections:
+                raise AssertionError(
+                    f"loud-400 guard: {model.rejections} server rejection(s) by end of round "
+                    f"{r + 1}/{n_rounds} — the endpoint REJECTED requests (OASIS swallows per-turn "
+                    f"errors; seed-1 precedent: context-wall 400s silently zeroed emits). "
+                    f"Failing at rejection one, not at the end.")
+    finally:
+        # 6. Stop the platform task cleanly (also on a guard failure — no dangling platform task).
+        await env.close()
 
-    # 6. Stop the platform task cleanly.
-    await env.close()
+    # Final belt (owner-ratified): a clean completion must have seen ZERO rejections.
+    if model.rejections:
+        raise AssertionError(
+            f"loud-400 guard (final): {model.rejections} server rejection(s) over the run")
 
 
 def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
@@ -433,10 +500,12 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
     db_path = _run_db_path(seed)
     model = _make_counting_model(
         model_id=model_id, endpoint_url=endpoint_url, token=token,
-        max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S)
+        max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S,
+        context_budget=hs.COHORT_CONTEXT_BUDGET)
     news_model = _make_news_sentinel_model(
         model_id=model_id, endpoint_url=endpoint_url, token=token,
-        max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S)
+        max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S,
+        context_budget=hs.COHORT_CONTEXT_BUDGET)
 
     edges = build_follow_edges(
         seed, n_agents=operating_point["n_agents"], density=operating_point["network_density"])
