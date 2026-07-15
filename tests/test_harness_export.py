@@ -163,3 +163,168 @@ def test_operating_point_frozen():
     for k in ("n_agents", "n_rounds", "network_density", "news_rate", "social_influence"):
         assert k in op
     assert op["n_agents"] >= 3
+
+
+# --- harness_spec: NETWORK_CONSTRUCTION + NEWS_INJECTION consumed-guard (Phase B deferred freeze,
+#     DECISIONS.md 2026-07-13 Ratification 2) — existence/range guards, not value pins ------------
+
+def test_network_news_construction_frozen():
+    from critaudit.sim.harness import harness_spec as hs
+    # network axis: rule form + the named OASIS realization surface are frozen non-empty strings
+    assert isinstance(hs.NETWORK_GRAPH_FORM, str) and hs.NETWORK_GRAPH_FORM
+    assert isinstance(hs.NETWORK_EDGE_SURFACE, str) and hs.NETWORK_EDGE_SURFACE
+    # seeding convention: namespaced spawn-key streams present, non-negative ints, all distinct
+    # (graph draw and news draws must be independent streams — changing one cannot perturb another)
+    streams = (hs.RNG_STREAM_GRAPH, hs.RNG_STREAM_NEWS_SCHEDULE, hs.RNG_STREAM_NEWS_CONTENT)
+    assert all(isinstance(s, int) and s >= 0 for s in streams)
+    assert len(set(streams)) == len(streams)
+    # news axis: schedule form + author-identity rule frozen; the dedicated manual author sits
+    # one past the last LLM-crowd id (graph has n_agents+1 members; n_agents stays the crowd count)
+    assert isinstance(hs.NEWS_SCHEDULE_FORM, str) and hs.NEWS_SCHEDULE_FORM
+    assert isinstance(hs.NEWS_AUTHOR_RULE, str) and hs.NEWS_AUTHOR_RULE
+    assert hs.NEWS_USER_AGENT_ID == hs.OPERATING_POINT["n_agents"]
+    # content pool: frozen tuple, auditable size, non-degenerate (content enters prompts and the
+    # length_spread diagnostic — the pool alone must not be able to degenerate it)
+    pool = hs.NEWS_POOL
+    assert isinstance(pool, tuple)
+    assert 8 <= len(pool) <= 16
+    assert all(isinstance(s, str) and s.strip() for s in pool)
+    assert len(set(pool)) == len(pool)                       # no duplicate strings
+    lengths = [len(s) for s in pool]
+    assert len(set(lengths)) == len(lengths)                 # all-distinct lengths
+    assert float(np.std(lengths)) > hs.LENGTH_SPREAD_FLOOR   # pool spread clears the frozen floor
+
+
+# --- harness_spec: Task-10 spec freezes consumed-guard (RECSYS_TYPE, MODEL_REVISION pin,
+#     COHORT_MAX_TOKENS) — existence/range/drift guards, not value pins ---------------------------
+
+def _modal_serving_config(source):
+    """Extract the duplicated serving literals without importing Modal in the test environment."""
+    import re
+
+    model_id = re.search(r'^MODEL_ID\s*=\s*"([^"]+)"', source, re.M)
+    revision = re.search(r'^SERVED_REVISION\s*=\s*"([0-9a-f]{40})"', source, re.M)
+    max_model_len = re.search(r'"--max-model-len"\s*,\s*"(\d+)"', source)
+    assert model_id, "MODEL_ID literal not found in modal_serve.py"
+    assert revision, "SERVED_REVISION literal not found in modal_serve.py"
+    assert max_model_len, "--max-model-len literal not found in modal_serve.py"
+    return {
+        "model_id": model_id.group(1),
+        "revision": revision.group(1),
+        "max_model_len": int(max_model_len.group(1)),
+    }
+
+
+def test_modal_serving_source_parser_reads_identity_and_context_limit():
+    source = '''
+MODEL_ID = "example/model"
+SERVED_REVISION = "0123456789abcdef0123456789abcdef01234567"
+cmd = ["vllm", "serve", MODEL_ID, "--max-model-len", "4096"]
+'''
+    assert _modal_serving_config(source) == {
+        "model_id": "example/model",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "max_model_len": 4096,
+    }
+
+
+def test_task10_spec_freezes_present_and_sane():
+    import re
+    from critaudit.sim.harness import harness_spec as hs
+    # RECSYS_TYPE: frozen exact Platform-ctor value; must be a non-Reddit OASIS enum value
+    # (Reddit mode skips the follow feed and breaks the round-granular pairing clock)
+    assert hs.RECSYS_TYPE in ("twitter", "twhin-bert", "random")
+    # MODEL_REVISION: pinned to a concrete 40-hex commit (no floating ref like "main")
+    assert re.fullmatch(r"[0-9a-f]{40}", hs.MODEL_REVISION)
+    # Cross-file drift tripwire: modal_serve.py deliberately does NOT import harness_spec (and
+    # `modal` is not importable under oasis_venv), so extract its duplicated serving literals
+    # textually and require its identity to equal the frozen spec.
+    serve_path = os.path.join(os.path.dirname(__file__), "..", "src", "critaudit", "sim",
+                              "harness", "modal_serve.py")
+    with open(serve_path) as f:
+        serving = _modal_serving_config(f.read())
+    assert serving["model_id"] == hs.MODEL_ID
+    assert serving["revision"] == hs.MODEL_REVISION
+    # COHORT_MAX_TOKENS: the COMPLETION CAP, decoupled from the context budget (owner-ratified
+    # correction 2026-07-14 after the seed-1 context wall: CAMEL hardwires token_limit to
+    # max_tokens, so the old 4096 served both roles and drove prompt+cap past the served 8192).
+    # Anchored on the measured completion distribution; the owner's cap rule draws from an
+    # enumerated menu, each >= 2x the observed max.
+    assert isinstance(hs.COHORT_MAX_TOKENS, int)
+    assert hs.COHORT_MAX_TOKENS in (512, 768, 1024)
+    # COHORT_CONTEXT_BUDGET + OVERHEAD_MAX_MEASURED: the client-side context budget (ChatAgent
+    # memory trims to it via the driver's token_limit override) and the Measurement-2 maximum
+    # overhead promoted to a frozen constant (reviewer hardening 2026-07-14). The inequality below
+    # IS the full frozen derivation — budget + measured overhead + cap + 256 declared slack <=
+    # served --max-model-len — so a future budget or serving-limit change cannot pass while
+    # violating the real serving-cap constraint.
+    assert isinstance(hs.COHORT_CONTEXT_BUDGET, int)
+    assert hs.COHORT_CONTEXT_BUDGET > 0 and hs.COHORT_CONTEXT_BUDGET % 512 == 0
+    assert hs.COHORT_CONTEXT_BUDGET > hs.COHORT_MAX_TOKENS
+    assert isinstance(hs.OVERHEAD_MAX_MEASURED, int) and hs.OVERHEAD_MAX_MEASURED > 0
+    assert (hs.COHORT_CONTEXT_BUDGET + hs.OVERHEAD_MAX_MEASURED
+            + hs.COHORT_MAX_TOKENS + 256 <= serving["max_model_len"])
+
+
+# --- Task-10 PURE construction helpers (no OASIS import): the follow-edge builder and the news
+#     schedule builder realizing the frozen NETWORK/NEWS rules. TDD'd here against the frozen
+#     constants; run_oasis_minimal drives OASIS with exactly these two outputs. ------------------
+
+def test_build_follow_edges_operating_point_count_and_shape():
+    from critaudit.sim.harness.oasis_adapter import build_follow_edges
+    from critaudit.sim.harness import harness_spec as hs
+    n = hs.OPERATING_POINT["n_agents"]           # 50
+    d = hs.OPERATING_POINT["network_density"]    # 0.10
+    edges = build_follow_edges(hs.COHORT_SEEDS[0], n_agents=n, density=d)
+    assert len(edges) == 245                      # round(0.10 * 50 * 49) — the frozen exact-count M
+    assert all(u != v for u, v in edges)          # no self-loops (u != v; the n*(n-1) denominator)
+    assert len(set(edges)) == len(edges)          # distinct ordered pairs (without replacement)
+    assert all(0 <= u < n and 0 <= v < n for u, v in edges)   # crowd-only ids 0..n_agents-1
+    assert all(isinstance(u, int) and isinstance(v, int) for u, v in edges)
+
+
+def test_build_follow_edges_deterministic_and_distinct_across_seeds():
+    from critaudit.sim.harness.oasis_adapter import build_follow_edges
+    e0a = build_follow_edges(20260627, n_agents=50, density=0.10)
+    e0b = build_follow_edges(20260627, n_agents=50, density=0.10)
+    e1 = build_follow_edges(20260628, n_agents=50, density=0.10)
+    assert e0a == e0b            # byte-determinism: pure function of the seed
+    assert e0a != e1            # distinct across (consecutive) seeds
+
+
+def test_build_follow_edges_stream_independent_of_news_consumption():
+    # namespaced spawn-key streams: perturbing the news draws (any amount, any rate) must NOT
+    # change the graph — the frozen decoupling that makes density a clean axis.
+    from critaudit.sim.harness.oasis_adapter import build_follow_edges, build_news_schedule
+    seed = 20260627
+    before = build_follow_edges(seed, n_agents=50, density=0.10)
+    build_news_schedule(seed, n_rounds=1000, news_rate=0.9)   # heavy schedule+content consumption
+    build_news_schedule(seed, n_rounds=7, news_rate=0.3)
+    after = build_follow_edges(seed, n_agents=50, density=0.10)
+    assert before == after
+
+
+def test_build_news_schedule_shape_range_and_determinism():
+    from critaudit.sim.harness.oasis_adapter import build_news_schedule
+    from critaudit.sim.harness import harness_spec as hs
+    nr = hs.OPERATING_POINT["n_rounds"]          # 20
+    rate = hs.OPERATING_POINT["news_rate"]       # 0.05
+    s0a = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=nr, news_rate=rate)
+    s0b = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=nr, news_rate=rate)
+    assert len(s0a) == nr                         # one entry per round
+    assert s0a == s0b                             # deterministic per seed
+    # each entry is None (no inject) or an in-range NEWS_POOL string (pool index in range)
+    assert all(x is None or x in hs.NEWS_POOL for x in s0a)
+
+
+def test_build_news_schedule_rate_bounds_and_seed_variation():
+    from critaudit.sim.harness.oasis_adapter import build_news_schedule
+    from critaudit.sim.harness import harness_spec as hs
+    all_on = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=20, news_rate=1.0)
+    all_off = build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=20, news_rate=0.0)
+    assert all(x is not None and x in hs.NEWS_POOL for x in all_on)  # rate 1.0 -> every round injects
+    assert all(x is None for x in all_off)                          # rate 0.0 -> none
+    # the realized inject pattern varies across (consecutive) seeds at an intermediate rate
+    a = [x is None for x in build_news_schedule(hs.COHORT_SEEDS[0], n_rounds=300, news_rate=0.5)]
+    b = [x is None for x in build_news_schedule(hs.COHORT_SEEDS[1], n_rounds=300, news_rate=0.5)]
+    assert a != b
