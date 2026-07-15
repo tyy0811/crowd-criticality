@@ -1,6 +1,6 @@
 # Sub-increment 1 (LLM harness) — Task-10 reference-cohort writedown
 
-**Date:** 2026-07-14 · **Branch:** `stage2-llm-harness-phaseB` @ `655017f` · **Plan:** Task 10 Steps 4–5
+**Date:** 2026-07-14 · **Branch:** `stage2-llm-harness-phaseB` · **Cohort closeout:** `9d95aa0` · **Plan:** Task 10 Steps 4–5
 (The plan text names this file `2026-06-27_subinc1_writedown.md` — the plan-authoring date; it is dated here
 by the actual run date per repo convention. Cosmetic deviation, recorded.)
 

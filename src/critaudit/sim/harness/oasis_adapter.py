@@ -492,9 +492,11 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
     through the OpenAI-compatible `endpoint_url` model `model_id`, and return
     (db_path, token_counts). All construction is dictated by the FROZEN rules in harness_spec +
     freeze report §4; see the module constants above for the disclosed Task-10 driver choices
-    (max_rec_post_len=5, temperature=0.7). token_counts = {"prompt","completion","total","n_calls"}
-    tallied by the driver-side accounting backend. The trace sqlite at db_path is a run artifact
-    (never committed); export_harness_run(db_path, timestamp_col="created_at") reads it downstream."""
+    (max_rec_post_len=5, temperature=0.7). token_counts contains aggregate
+    {"prompt","completion","total","n_calls"} values plus a copied per-call ``usage_log`` and
+    the server ``rejections`` count from the driver-side accounting backend. The trace sqlite at
+    db_path is a run artifact (never committed); export_harness_run(db_path,
+    timestamp_col="created_at") reads it downstream."""
     import asyncio
 
     db_path = _run_db_path(seed)
@@ -517,4 +519,8 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
         edges=edges, schedule=schedule))
 
     token_counts = dict(model.usage_counts)
+    token_counts.update(
+        usage_log=list(model.usage_log),
+        rejections=int(model.rejections),
+    )
     return db_path, token_counts

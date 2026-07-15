@@ -1,8 +1,7 @@
 """Modal vLLM OpenAI-compatible endpoint for the LLM-harness reference cohort (Phase B, Task 9 Step 1).
 
-$0 AUTHORING ARTIFACT — written and import-validated locally; NOT deployed. Steps 2-4 (deploy / smoke /
-teardown) happen only AFTER a controller GPU-spend gate. Deploying this file is the FIRST time GPU is
-touched in the whole sub-increment.
+DEPLOYED INSTRUMENT — deployed, smoke-tested, and used for the repaired reference cohort. The endpoint
+was stopped after the registered windows; any redeploy remains an owner-gated paid operation.
 
 Serves `harness_spec.MODEL_ID` (Qwen2.5-7B-Instruct) at a concrete HF revision on a single A10, exposing
 an OpenAI-compatible `/v1` endpoint that OASIS's CAMEL backend drives via the OPENAI_COMPATIBLE_MODEL
@@ -35,9 +34,9 @@ MINUTES = 60  # seconds, for readable cap arithmetic below
 # (not imported) so bringing up the Modal container never requires importing the critaudit package
 # remotely. Keep in sync by hand if harness_spec.MODEL_ID changes.
 MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
-# Concrete commit resolved from HF `main` on 2026-07-14 (repo lastModified 2025-01-12). harness_spec.MODEL_REVISION
-# is still the string "main" and gets PINNED to this exact commit at Task 10 Step 1 per the plan; we already
-# serve the concrete commit here so the endpoint substrate is reproducible from first boot.
+# Concrete commit resolved from HF `main` on 2026-07-14 (repo lastModified 2025-01-12).
+# harness_spec.MODEL_REVISION is pinned to this same commit and the equality is drift-guarded in
+# test_harness_export.py, keeping the registered endpoint substrate reproducible.
 SERVED_REVISION = "a09a35458c702b33eeacc393d103063234e8bc28"
 
 VLLM_PORT = 8000

@@ -198,6 +198,36 @@ def test_network_news_construction_frozen():
 # --- harness_spec: Task-10 spec freezes consumed-guard (RECSYS_TYPE, MODEL_REVISION pin,
 #     COHORT_MAX_TOKENS) — existence/range/drift guards, not value pins ---------------------------
 
+def _modal_serving_config(source):
+    """Extract the duplicated serving literals without importing Modal in the test environment."""
+    import re
+
+    model_id = re.search(r'^MODEL_ID\s*=\s*"([^"]+)"', source, re.M)
+    revision = re.search(r'^SERVED_REVISION\s*=\s*"([0-9a-f]{40})"', source, re.M)
+    max_model_len = re.search(r'"--max-model-len"\s*,\s*"(\d+)"', source)
+    assert model_id, "MODEL_ID literal not found in modal_serve.py"
+    assert revision, "SERVED_REVISION literal not found in modal_serve.py"
+    assert max_model_len, "--max-model-len literal not found in modal_serve.py"
+    return {
+        "model_id": model_id.group(1),
+        "revision": revision.group(1),
+        "max_model_len": int(max_model_len.group(1)),
+    }
+
+
+def test_modal_serving_source_parser_reads_identity_and_context_limit():
+    source = '''
+MODEL_ID = "example/model"
+SERVED_REVISION = "0123456789abcdef0123456789abcdef01234567"
+cmd = ["vllm", "serve", MODEL_ID, "--max-model-len", "4096"]
+'''
+    assert _modal_serving_config(source) == {
+        "model_id": "example/model",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "max_model_len": 4096,
+    }
+
+
 def test_task10_spec_freezes_present_and_sane():
     import re
     from critaudit.sim.harness import harness_spec as hs
@@ -206,15 +236,15 @@ def test_task10_spec_freezes_present_and_sane():
     assert hs.RECSYS_TYPE in ("twitter", "twhin-bert", "random")
     # MODEL_REVISION: pinned to a concrete 40-hex commit (no floating ref like "main")
     assert re.fullmatch(r"[0-9a-f]{40}", hs.MODEL_REVISION)
-    # cross-file drift tripwire: modal_serve.py deliberately does NOT import harness_spec (and
-    # `modal` is not importable under oasis_venv), so extract its SERVED_REVISION literal
-    # textually and require it to equal the frozen pin — served substrate == registered pin.
+    # Cross-file drift tripwire: modal_serve.py deliberately does NOT import harness_spec (and
+    # `modal` is not importable under oasis_venv), so extract its duplicated serving literals
+    # textually and require its identity to equal the frozen spec.
     serve_path = os.path.join(os.path.dirname(__file__), "..", "src", "critaudit", "sim",
                               "harness", "modal_serve.py")
     with open(serve_path) as f:
-        m = re.search(r'^SERVED_REVISION\s*=\s*"([0-9a-f]{40})"', f.read(), re.M)
-    assert m, "SERVED_REVISION literal not found in modal_serve.py"
-    assert m.group(1) == hs.MODEL_REVISION
+        serving = _modal_serving_config(f.read())
+    assert serving["model_id"] == hs.MODEL_ID
+    assert serving["revision"] == hs.MODEL_REVISION
     # COHORT_MAX_TOKENS: the COMPLETION CAP, decoupled from the context budget (owner-ratified
     # correction 2026-07-14 after the seed-1 context wall: CAMEL hardwires token_limit to
     # max_tokens, so the old 4096 served both roles and drove prompt+cap past the served 8192).
@@ -226,14 +256,14 @@ def test_task10_spec_freezes_present_and_sane():
     # memory trims to it via the driver's token_limit override) and the Measurement-2 maximum
     # overhead promoted to a frozen constant (reviewer hardening 2026-07-14). The inequality below
     # IS the full frozen derivation — budget + measured overhead + cap + 256 declared slack <=
-    # served --max-model-len 8192 — so a future budget change cannot pass this guard while
+    # served --max-model-len — so a future budget or serving-limit change cannot pass while
     # violating the real serving-cap constraint.
     assert isinstance(hs.COHORT_CONTEXT_BUDGET, int)
     assert hs.COHORT_CONTEXT_BUDGET > 0 and hs.COHORT_CONTEXT_BUDGET % 512 == 0
     assert hs.COHORT_CONTEXT_BUDGET > hs.COHORT_MAX_TOKENS
     assert isinstance(hs.OVERHEAD_MAX_MEASURED, int) and hs.OVERHEAD_MAX_MEASURED > 0
     assert (hs.COHORT_CONTEXT_BUDGET + hs.OVERHEAD_MAX_MEASURED
-            + hs.COHORT_MAX_TOKENS + 256 <= 8192)
+            + hs.COHORT_MAX_TOKENS + 256 <= serving["max_model_len"])
 
 
 # --- Task-10 PURE construction helpers (no OASIS import): the follow-edge builder and the news

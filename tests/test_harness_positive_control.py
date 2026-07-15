@@ -216,6 +216,48 @@ def test_usage_accounting_sums_across_calls():
     assert m.usage_log == [(10, 3), (20, 5), (0, 0)]
 
 
+def test_run_oasis_minimal_returns_per_call_telemetry(tmp_path, monkeypatch):
+    """The supported runner must expose the tail-watch data without a private factory shim."""
+    import critaudit.sim.harness.oasis_adapter as oa
+
+    class _FakeModel:
+        usage_counts = {"prompt": 30, "completion": 8, "total": 38, "n_calls": 2}
+        usage_log = [(10, 3), (20, 5)]
+        rejections = 0
+
+    model = _FakeModel()
+    db_path = str(tmp_path / "oasis.db")
+
+    monkeypatch.setattr(oa, "_run_db_path", lambda seed: db_path)
+    monkeypatch.setattr(oa, "_make_counting_model", lambda **kwargs: model)
+    monkeypatch.setattr(oa, "_make_news_sentinel_model", lambda **kwargs: object())
+    monkeypatch.setattr(oa, "build_follow_edges", lambda *args, **kwargs: [])
+    monkeypatch.setattr(oa, "build_news_schedule", lambda *args, **kwargs: [None])
+
+    async def _no_op_run(**kwargs):
+        return None
+
+    monkeypatch.setattr(oa, "_run_oasis_minimal_async", _no_op_run)
+    returned_db, telemetry = oa.run_oasis_minimal(
+        seed=1,
+        operating_point={"n_agents": 2, "n_rounds": 1, "network_density": 0.0,
+                         "news_rate": 0.0, "social_influence": 3},
+        model_id="never-called",
+        endpoint_url="http://127.0.0.1:1/v1",
+        token="unused",
+    )
+
+    assert returned_db == db_path
+    assert telemetry == {
+        "prompt": 30,
+        "completion": 8,
+        "total": 38,
+        "n_calls": 2,
+        "usage_log": [(10, 3), (20, 5)],
+        "rejections": 0,
+    }
+
+
 # --- @slow (imports CAMEL+OASIS; $0, NO network): the news user's FAIL-CLOSED SENTINEL model
 #     (controller ratification 2026-07-14): "model-free by frozen NEWS_AUTHOR_RULE" is ENFORCED at
 #     runtime, not assumed — any inference call on the news backend is a driver bug and must raise.
