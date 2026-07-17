@@ -121,3 +121,36 @@ def test_attribution_rejects_unsorted_rounds():
     E = np.eye(3)
     with pytest.raises(ValueError, match="non-decreasing"):
         attribute_similarity_parents(np.array([1, 0, 2]), E, 0.5)
+
+
+def test_calibrate_pooled_single_stream_equals_wrapper():
+    from critaudit.cascades.similarity import calibrate_theta_pooled
+    parent_idx_true, round_of, E = _planted_calibration_problem()
+    single = calibrate_theta(parent_idx_true, round_of, E)
+    pooled = calibrate_theta_pooled([(parent_idx_true, round_of, E)])
+    assert single == pooled                            # frozen dataclass equality, field-for-field
+
+
+def test_calibrate_pooled_pools_denominators_across_streams():
+    from critaudit.cascades.similarity import calibrate_theta_pooled
+    # Stream A: perfect planted recovery (2 children, TPR 1). Stream B: its one child's true
+    # parent is SAME-round -> unreachable, wrong at every theta. Pooled TPR at theta* = 2/3 and
+    # the pooled ceiling = 1/3 — denominators pooled over ALL true-edged children, per the frozen
+    # procedure (not averaged per-stream, which would give 1/2 and 1/4 here).
+    a = _planted_calibration_problem()
+    e0, e1 = _unit([1, 0, 0]), _unit([0, 1, 0])
+    # child idx 2 (round 1) has true parent idx 1 (round 1): same-round, parent_idx[i] < i as in
+    # every real exported stream.
+    b = (np.array([-1, -1, 1]), np.array([0, 1, 1]), np.stack([e0, e1, e0]))
+    res = calibrate_theta_pooled([a, b])
+    assert res.same_round_ceiling == pytest.approx(1 / 3)
+    assert res.tpr == pytest.approx(2 / 3)
+    assert res.fpr == 0.0
+
+
+def test_attribution_rates_at_theta_matches_curve_point():
+    from critaudit.cascades.similarity import attribution_rates_at_theta
+    parent_idx_true, round_of, E = _planted_calibration_problem()
+    res = calibrate_theta(parent_idx_true, round_of, E)
+    tpr, fpr = attribution_rates_at_theta(parent_idx_true, round_of, E, res.theta)
+    assert (tpr, fpr) == (res.tpr, res.fpr)

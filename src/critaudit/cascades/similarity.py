@@ -95,12 +95,12 @@ class CalibrationResult:
                                 # move the argmax — an unreachable child is wrong at every theta)
 
 
-def calibrate_theta(parent_idx_true, round_of, E, *, spec=lps):
-    """The frozen attribution-Youden procedure (design §6). Positives/negatives are DETERMINISTIC
-    (no sampling): TPR over ALL true-edged children (same-round parents honestly unreachable),
-    FPR over ALL true roots. theta* = argmax J = TPR - FPR over theta_grid(); ties -> LARGEST
-    theta (frozen: fewest manufactured edges). FAIL-CLOSED on an empty stream, an empty true-edge
-    pool, or misaligned inputs."""
+def _stream_scores(parent_idx_true, round_of, E, *, spec):
+    """Per-stream theta-independent score vectors for the pooled calibration. Returns
+    (child_hit, child_cos, root_cos, unreachable, pos, neg): the argmax-candidate correctness and
+    rounded-cosine per true-edged child, the best rounded-cosine per true root (-inf when no
+    candidate exists), the per-child same-round-unreachable flags, and the AUC pair scores
+    (true-parent vs non-parent-candidate). FAIL-CLOSED on empty/misaligned inputs."""
     parent_idx_true = np.asarray(parent_idx_true, dtype=np.int64)
     round_of = np.asarray(round_of)
     n = parent_idx_true.size
@@ -110,31 +110,17 @@ def calibrate_theta(parent_idx_true, round_of, E, *, spec=lps):
         raise ValueError("parent_idx_true and round_of misaligned")
     children = np.flatnonzero(parent_idx_true >= 0)
     roots = np.flatnonzero(parent_idx_true < 0)
-    if children.size == 0:
-        raise ValueError("calibrate_theta: no true edges to calibrate against (fail-closed)")
 
     best_idx, best_cos = _best_earlier_round_candidate(round_of, E, decimals=spec.COSINE_DECIMALS)
 
-    # Per-child: does the (theta-independent) argmax candidate equal the true parent?
     child_hit = best_idx[children] == parent_idx_true[children]        # same-round parent -> False
     child_cos = np.where(np.isnan(best_cos[children]), -np.inf, best_cos[children])
-    root_cos = np.where(np.isnan(best_cos[roots]), -np.inf, best_cos[roots]) \
-        if roots.size else np.array([])
-    unreachable = round_of[parent_idx_true[children]] >= round_of[children]
-    same_round_ceiling = float(np.mean(unreachable))
+    root_cos = (np.where(np.isnan(best_cos[roots]), -np.inf, best_cos[roots])
+                if roots.size else np.array([]))
+    unreachable = (round_of[parent_idx_true[children]] >= round_of[children]
+                   if children.size else np.array([], dtype=bool))
 
-    grid = theta_grid(spec)
-    tpr_curve = np.array([np.mean(child_hit & (child_cos >= t)) for t in grid])
-    fpr_curve = (np.array([np.mean(root_cos >= t) for t in grid])
-                 if roots.size else np.zeros(grid.size))
-    j_curve = tpr_curve - fpr_curve
-    best_j = j_curve.max()
-    i_star = int(np.flatnonzero(j_curve == best_j)[-1])                # ties -> LARGEST theta
-    theta_star = float(grid[i_star])
-
-    # Pairwise rounded-cosine AUC (recorded diagnostic): true-edge pair scores vs ALL
-    # (event, non-parent strictly-earlier-round candidate) pair scores. Deterministic; rank-based
-    # (Mann-Whitney) with midrank ties.
+    # AUC pair scores (recorded diagnostic): deterministic, candidates never cross streams.
     pos, neg = [], []
     for i in range(n):
         n_cand = int(np.searchsorted(round_of, round_of[i]))
@@ -147,6 +133,39 @@ def calibrate_theta(parent_idx_true, round_of, E, *, spec=lps):
             neg.extend(np.delete(c, p))
         else:
             neg.extend(c)
+    return child_hit, child_cos, root_cos, unreachable, pos, neg
+
+
+def calibrate_theta_pooled(streams, *, spec=lps):
+    """The frozen attribution-Youden procedure (design §6) over one or more streams whose
+    candidate sets never cross stream boundaries (the three registered cohort windows). Pooled
+    denominators: TPR over ALL true-edged children of every stream, FPR over ALL true roots.
+    theta* = argmax J = TPR - FPR over theta_grid(); ties -> LARGEST theta (frozen: fewest
+    manufactured edges). Positives/negatives DETERMINISTIC — no sampling anywhere. FAIL-CLOSED on
+    an empty stream list or an empty pooled true-edge pool."""
+    if not streams:
+        raise ValueError("calibrate_theta_pooled: no streams (fail-closed)")
+    hits, ccos, rcos, unre, pos, neg = [], [], [], [], [], []
+    for parent_idx_true, round_of, E in streams:
+        h, c, r, u, p, ng = _stream_scores(parent_idx_true, round_of, E, spec=spec)
+        hits.append(h); ccos.append(c); rcos.append(r); unre.append(u)
+        pos.extend(p); neg.extend(ng)
+    child_hit = np.concatenate(hits) if hits else np.array([], dtype=bool)
+    child_cos = np.concatenate(ccos)
+    root_cos = np.concatenate(rcos)
+    unreachable = np.concatenate(unre)
+    if child_hit.size == 0:
+        raise ValueError("calibrate_theta_pooled: no true edges to calibrate against (fail-closed)")
+    same_round_ceiling = float(np.mean(unreachable))
+
+    grid = theta_grid(spec)
+    tpr_curve = np.array([np.mean(child_hit & (child_cos >= t)) for t in grid])
+    fpr_curve = (np.array([np.mean(root_cos >= t) for t in grid])
+                 if root_cos.size else np.zeros(grid.size))
+    j_curve = tpr_curve - fpr_curve
+    i_star = int(np.flatnonzero(j_curve == j_curve.max())[-1])         # ties -> LARGEST theta
+    theta_star = float(grid[i_star])
+
     if pos and neg:
         scores = np.concatenate([np.asarray(pos), np.asarray(neg)])
         ranks = _midranks(scores)
@@ -160,6 +179,25 @@ def calibrate_theta(parent_idx_true, round_of, E, *, spec=lps):
         j_curve=tuple((float(t), float(a), float(b), float(j))
                       for t, a, b, j in zip(grid, tpr_curve, fpr_curve, j_curve)),
         same_round_ceiling=same_round_ceiling)
+
+
+def calibrate_theta(parent_idx_true, round_of, E, *, spec=lps):
+    """Single-stream convenience wrapper over the pooled procedure (identical by construction)."""
+    res = calibrate_theta_pooled([(parent_idx_true, round_of, E)], spec=spec)
+    return res
+
+
+def attribution_rates_at_theta(parent_idx_true, round_of, E, theta, *, spec=lps):
+    """(tpr, fpr) of the frozen attribution rule on ONE stream at a FIXED theta — the per-window
+    diagnostic recorded alongside the pooled theta*."""
+    child_hit, child_cos, root_cos, _, _, _ = _stream_scores(
+        parent_idx_true, round_of, E, spec=spec)
+    theta = round(float(theta), spec.COSINE_DECIMALS)
+    if child_hit.size == 0:
+        raise ValueError("attribution_rates_at_theta: no true edges in stream (fail-closed)")
+    tpr = float(np.mean(child_hit & (child_cos >= theta)))
+    fpr = float(np.mean(root_cos >= theta)) if root_cos.size else 0.0
+    return tpr, fpr
 
 
 def _midranks(x):
