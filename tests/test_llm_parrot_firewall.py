@@ -17,15 +17,59 @@ from critaudit.sim.harness.cohort_marginals import COHORT_MARGINALS_FIELDS
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The sub-inc-2 modules under embargo (design §8) — every module that touches cohort data or
-# null generation.
-_SCANNED = [
+# The sub-inc-2 modules under embargo (design §8): the EXPLICIT minimum-coverage list, unioned
+# with every module under src/critaudit that imports the sub-inc-2 surface (llm_parrot_spec or
+# cohort_marginals) — so a future module that self-identifies as sub-inc-2 surface cannot
+# silently escape the scan by not being appended here (review 2026-07-17: a hand-maintained list
+# was a completeness hole; nothing failed when you forgot to extend it).
+_SCANNED_MINIMUM = [
     "src/critaudit/cascades/similarity.py",
     "src/critaudit/sim/harness/cohort_marginals.py",
     "src/critaudit/sim/harness/embedding.py",
     "src/critaudit/sim/controls/llm_parrot.py",
     "src/critaudit/experiments/llm_parrot_null.py",
 ]
+_SURFACE_MARKERS = ("llm_parrot_spec", "cohort_marginals")
+
+
+def _discover_scanned():
+    found = set()
+    src_root = os.path.join(_REPO, "src", "critaudit")
+    for dirpath, _, files in os.walk(src_root):
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, name)
+            rel = os.path.relpath(path, _REPO)
+            if rel.replace(os.sep, "/").endswith(
+                    ("controls/llm_parrot_spec.py", "harness/cohort_marginals.py")):
+                found.add(rel.replace(os.sep, "/"))    # the surface itself is always scanned
+                continue
+            tree = ast.parse(open(path).read(), filename=path)
+            for node in ast.walk(tree):
+                # Both import shapes count: `import ...llm_parrot_spec` (module path carries the
+                # marker) and `from critaudit.sim.controls import llm_parrot_spec` (the marker is
+                # the imported NAME).
+                refs = []
+                if isinstance(node, ast.Import):
+                    refs = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    refs = [node.module or ""] + [a.name for a in node.names]
+                if any(r and any(mark in r for mark in _SURFACE_MARKERS) for r in refs):
+                    found.add(rel.replace(os.sep, "/"))
+                    break
+    return sorted(found)
+
+
+_SCANNED = sorted(set(_SCANNED_MINIMUM) | set(_discover_scanned()))
+
+
+def test_scan_set_discovery_covers_the_minimum():
+    # The discovery must independently find every explicitly-listed module (proves the dynamic
+    # sweep works; if discovery breaks, this reds rather than the scan silently narrowing).
+    discovered = set(_discover_scanned())
+    missing = [p for p in _SCANNED_MINIMUM if p not in discovered]
+    assert not missing, f"discovery failed to find {missing} — the dynamic sweep is broken"
 
 # Forbidden import roots (the fitting stack) and symbols (the τ-arm), verified against the real
 # package layout: critaudit.powerlaw (fit_powerlaw), critaudit.hawkes (certify_near_critical),
@@ -68,7 +112,10 @@ def test_defined_not_evaluated_constants_unreferenced():
     # The §9 criteria are FROZEN (present in the spec module — asserted in test_llm_parrot_spec)
     # and EVALUATED NOWHERE: no sub-inc-2 module even names them.
     assert hasattr(lps, "NULL_TAU_FRAC_MAX") and hasattr(lps, "N_EMIT_DEFINITION")
+    spec_module = "src/critaudit/sim/controls/llm_parrot_spec.py"
     for path in _SCANNED:
+        if path == spec_module:
+            continue                                   # the spec DEFINES them; consumers may not
         _, names = _names_and_imports(path)
         hit = names & _EMBARGOED_CONSTANTS
         assert not hit, f"{path} references defined-not-evaluated constant(s) {sorted(hit)}"
@@ -91,7 +138,7 @@ def test_cohort_marginals_whitelist():
     assert COHORT_MARGINALS_FIELDS == ("per_round_counts", "authored_texts")
 
 
-_BANKED_DIR = os.path.join(_REPO, "results", "s2_llm_parrot_null")
+from critaudit.experiments.llm_parrot_null import BANKED_DIR as _BANKED_DIR  # single source
 _EMBARGOED_KEY = re.compile(r"tau|p_boot|alpha|gate_|n_emit")
 
 

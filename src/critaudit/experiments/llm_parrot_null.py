@@ -20,7 +20,7 @@ import numpy as np
 
 from critaudit.cascades.similarity import attribution_rates_at_theta, calibrate_theta_pooled
 from critaudit.sim.controls import llm_parrot_spec as lps
-from critaudit.sim.harness.cohort_marginals import extract_marginals
+from critaudit.sim.harness.cohort_marginals import extract_marginals, round_indices
 from critaudit.sim.harness.oasis_adapter import export_harness_run
 
 # The durable archive of the three registered cohort windows (sub-inc-1 writedown; raw artifacts
@@ -42,12 +42,9 @@ def _window_db(archive_dir, seed):
 
 
 def _round_of(run):
-    """Round index per event (validated round-granular, same rule as extract_marginals)."""
-    times = np.asarray(run.times, dtype=float)
-    rounds = np.floor(times).astype(np.int64)
-    if not np.all(times == rounds):
-        raise ValueError("cohort stream is not round-granular (fail-closed)")
-    return rounds
+    """Round index per event — the SHARED round_indices rule (one validation home with
+    extract_marginals; the two copies had already diverged once, review 2026-07-17)."""
+    return round_indices(run.times)
 
 
 def load_cohort_windows(archive_dir=DEFAULT_ARCHIVE):
@@ -82,14 +79,15 @@ def run_theta_calibration(archive_dir=DEFAULT_ARCHIVE, out_path=None):
             "n_true_roots": int((run.parent_idx < 0).sum()),
             "n_rounds": int(rounds.max()) + 1,
             "embedding_sha256": hashlib.sha256(E.tobytes()).hexdigest(),
-            "_stream": (run.parent_idx, rounds, E),          # stripped before banking
         }
 
     res = calibrate_theta_pooled(streams)
-    for seed_str, w in per_window.items():
-        tpr, fpr = attribution_rates_at_theta(*w.pop("_stream"), res.theta)
-        w["tpr_at_theta"] = tpr
-        w["fpr_at_theta"] = fpr
+    # streams is built in WINDOW_ORDER, so it zips against per_window without any stashing of
+    # raw arrays inside the to-be-banked record (data plane and record plane never mix).
+    for seed, stream in zip(lps.WINDOW_ORDER, streams):
+        tpr, fpr = attribution_rates_at_theta(*stream, res.theta)
+        per_window[str(seed)]["tpr_at_theta"] = tpr
+        per_window[str(seed)]["fpr_at_theta"] = fpr
 
     record = {
         "artifact": "theta_calibration",
@@ -120,21 +118,31 @@ def run_theta_calibration(archive_dir=DEFAULT_ARCHIVE, out_path=None):
 
 def _dump_banked_json(record, out_path):
     """Deterministic banked-artifact serialization: sorted keys, no wall-clock anywhere —
-    byte-identical on re-run (the @slow reproduction anchor)."""
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    byte-identical on re-run (the @slow reproduction anchor). allow_nan=False fails loudly if a
+    NaN diagnostic ever reaches a banked artifact (RFC-8259-invalid `NaN` tokens must never enter
+    the committed record silently)."""
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, "w") as f:
-        json.dump(record, f, sort_keys=True, indent=1)
+        json.dump(record, f, sort_keys=True, indent=1, allow_nan=False)
         f.write("\n")
 
 
 # Part 2 (T7): the 64-seed n_struct band — n_struct ONLY (design §7/§8). The frozen chain:
 # theta defaults to the BANKED T5 calibration output, never an ad-hoc value.
-_BANKED_THETA_JSON = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-    "results", "s2_llm_parrot_null", "2026-07-17_theta_calibration.json")
+#
+# SINGLE SOURCE of the banked-artifact locations (the reproduction tests and the firewall's
+# schema guard import these — four independent spellings was a drift channel, review 2026-07-17).
+# The repo-root walk assumes the src-layout EDITABLE install that is this project's registered
+# substrate (~/oasis_venv); under a non-editable install the results/ tree is not packaged at all
+# and banked_theta() fails loudly with the path in the message (accepted residual, disclosed).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+BANKED_DIR = os.path.join(_REPO_ROOT, "results", "s2_llm_parrot_null")
+BANKED_THETA_JSON = os.path.join(BANKED_DIR, "2026-07-17_theta_calibration.json")
+BANKED_BAND_JSON = os.path.join(BANKED_DIR, "2026-07-17_nstruct_band.json")
 
 
-def banked_theta(path=_BANKED_THETA_JSON):
+def banked_theta(path=BANKED_THETA_JSON):
     """The calibrated theta from the committed T5 artifact (fail-closed if absent/malformed)."""
     with open(path) as f:
         rec = json.load(f)
@@ -166,6 +174,9 @@ def run_matched_null_band(archive_dir=DEFAULT_ARCHIVE, *, theta=None, out_path=N
         n_seeds = lps.SWEEP_BAND_SEEDS
     if base_seed is None:
         base_seed = lps.NULL_BASE_SEED
+    if n_seeds <= 0:
+        raise ValueError(f"run_matched_null_band: n_seeds must be > 0 (got {n_seeds}) — an empty "
+                         f"band would bank an edge computed from no data (fail-closed)")
     if theta is None:
         theta = banked_theta()
     if windows is None:
@@ -173,8 +184,13 @@ def run_matched_null_band(archive_dir=DEFAULT_ARCHIVE, *, theta=None, out_path=N
         windows = {seed: (marg, embed_texts(marg.authored_texts))
                    for seed, (run, marg) in load_cohort_windows(archive_dir).items()}
         window_order = lps.WINDOW_ORDER
+        windows_source = "archive"
     else:
+        # Injected mode (the fast synthetic tier): window order = the mapping's insertion order —
+        # deterministic for a given construction, and stamped as non-archive provenance so a
+        # synthetic band can never be mistaken for the registered artifact.
         window_order = tuple(windows)
+        windows_source = "injected"
 
     values, seeds_rows = [], []
     per_window = {str(w): [] for w in window_order}
@@ -200,6 +216,7 @@ def run_matched_null_band(archive_dir=DEFAULT_ARCHIVE, *, theta=None, out_path=N
             "n_seeds": int(n_seeds),
             "window_assignment": lps.WINDOW_ASSIGNMENT,
             "window_order": [str(w) for w in window_order],
+            "windows_source": windows_source,
             "band_quantile": lps.SWEEP_BAND_QUANTILE,
             "band_edge": lps.SWEEP_BAND_EDGE,
         },

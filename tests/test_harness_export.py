@@ -101,6 +101,10 @@ def _build_synthetic_oasis_db(path):
     # quote_content. round 2: u1 REPOSTS post 1 — content='' (no authored text by construction).
     con.execute("INSERT INTO post VALUES(3, 2, 2, 'root b', 'quote by u2', 1.0)")
     con.execute("INSERT INTO post VALUES(4, 1, 1, '', NULL, 2.0)")
+    # round 0: a CHILDLESS root by u3 — participates in NO edge, so the export path's full
+    # post-table scan (not a join) is what keeps it alive as a singleton avalanche (coverage
+    # restored per review 2026-07-17: a join-based exporter regression must fail here).
+    con.execute("INSERT INTO post VALUES(5, 3, NULL, 'lone root c', NULL, 0.0)")
     # round 1: two comments, both replying to post 1 (a comment's parent is a POST -> post:1)
     con.execute("INSERT INTO comment VALUES(1, 1, 1, 'reply by u1', 1.0)")
     con.execute("INSERT INTO comment VALUES(2, 1, 2, 'reply by u2', 1.0)")
@@ -119,6 +123,8 @@ def _build_synthetic_oasis_db(path):
                 (json.dumps({"quoted_id": 2, "new_post_id": 3}),))            # rowid 6 -> post:3
     con.execute("INSERT INTO trace VALUES(1, 2.0, 'repost', ?)",
                 (json.dumps({"reposted_id": 1, "new_post_id": 4}),))          # rowid 7 -> post:4
+    con.execute("INSERT INTO trace VALUES(3, 0.0, 'create_post', ?)",
+                (json.dumps({"content": "lone root c", "post_id": 5}),))      # rowid 8 -> post:5
     con.commit()
     con.close()
 
@@ -127,20 +133,22 @@ def test_export_harness_run_from_synthetic_db(tmp_path):
     db = str(tmp_path / "oasis.db")
     _build_synthetic_oasis_db(db)
     run = export_harness_run(db, timestamp_col="created_at")
-    # 6 events: 2 root posts + 1 quote + 1 repost + 2 comments.
-    assert run.times.size == 6
+    # 7 events: 3 root posts (one childless) + 1 quote + 1 repost + 2 comments.
+    assert run.times.size == 7
     # AUTHORED content (2026-07-17 correction): the quote event carries the AUTHOR's text
     # (quote_content), never the quoted original's; the repost carries no authored text.
-    assert run.content == ["root a", "root b", "quote by u2", "reply by u1", "reply by u2", ""]
-    # trees: post1 <- {comment1, comment2, repost4} (size 4) and post2 <- quote3 (size 2).
+    assert run.content == ["root a", "root b", "lone root c",
+                           "quote by u2", "reply by u1", "reply by u2", ""]
+    # trees: post1 <- {comment1, comment2, repost4} (size 4), post2 <- quote3 (size 2), and the
+    # CHILDLESS post5 surviving export as a singleton (size 1 — the full-scan coverage).
     av = post_reply_tree(run.times, run.root_id, run.parent_idx)
-    assert sorted(av.sizes.tolist()) == [2, 4]
+    assert sorted(av.sizes.tolist()) == [1, 2, 4]
     # read->emit: u1's comment reconstructs via the seq join (refresh rowid 3 < comment rowid 4 at the
     # same created_at); u1's round-2 repost of served post:1 reconstructs across rounds; u2 never
     # refreshed, so neither of u2's emits pairs. If the seq join were absent (seq=0), the same-round
     # pair would NOT reconstruct, so this still asserts the join end-to-end.
     assert int(run.read_emit_success.sum()) == 2
-    assert read_emit_ratio(run) == 2 / 6
+    assert read_emit_ratio(run) == 2 / 7
     assert read_emit_ratio(run) <= n_struct(av)   # accessibility is a subset of realized edges
 
 
@@ -167,6 +175,35 @@ def test_authored_content_cross_check_repost_nonempty_raises(tmp_path):
     con.commit()
     con.close()
     with pytest.raises(ValueError, match="repost"):
+        export_harness_run(db, timestamp_col="created_at")
+
+
+def test_authored_content_cross_check_repost_empty_quote_content_raises(tmp_path):
+    """FAIL-CLOSED power check (review 2026-07-17): quote_content=''-instead-of-NULL on a repost
+    breaks the schema's NULL contract even though the authored text would still be '' — the drift
+    tripwire must fire on the contract, not just on the visible text."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    con.execute("UPDATE post SET quote_content = '' WHERE post_id = 4")
+    con.commit()
+    con.close()
+    with pytest.raises(ValueError, match="repost"):
+        export_harness_run(db, timestamp_col="created_at")
+
+
+def test_authored_content_traceless_row_with_quote_content_raises(tmp_path):
+    """FAIL-CLOSED power check (review 2026-07-17): the traceless tolerance exists only for
+    parentless roots — a traceless PARENTLESS row carrying quote_content cannot be validated by
+    the trace-action cross-check and quotes always have parents, so it must raise rather than
+    silently export unvalidated text (the fail-open corner the review flagged)."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO post VALUES(9, 3, NULL, 'orig', 'sneaky quote text', 0.0)")
+    con.commit()                                       # no trace row for post 9
+    con.close()
+    with pytest.raises(ValueError, match="traceless"):
         export_harness_run(db, timestamp_col="created_at")
 
 

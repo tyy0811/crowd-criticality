@@ -42,9 +42,10 @@ def test_extract_marginals_fail_closed():
         extract_marginals(_run([0, 1], content=["only-one"]))
 
 
-_ARCHIVE = os.path.expanduser("~/crowd-crit-runs/s2_harness_subinc1")
-_BANKED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "results", "s2_llm_parrot_null", "2026-07-17_theta_calibration.json")
+# Single-source locations (review 2026-07-17): the driver owns them; a re-bank updates driver +
+# tests in one edit.
+from critaudit.experiments.llm_parrot_null import (   # noqa: E402
+    BANKED_THETA_JSON as _BANKED, DEFAULT_ARCHIVE as _ARCHIVE)
 
 
 @pytest.mark.slow

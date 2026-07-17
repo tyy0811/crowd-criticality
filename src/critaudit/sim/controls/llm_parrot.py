@@ -67,33 +67,52 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
          lengths <= MATCH_LEN_KS_COEFF*sqrt((n+m)/(n*m)); cosine(mean null embedding, mean pool
          embedding) >= MATCH_EMBED_MEAN_COS_MIN.
     (iii) WELL-FORMED: post_reply_tree consumes without error; n_struct/burstiness/fano_profile
-         evaluate — values RECORDED, not asserted (the null's structure is free by design)."""
+         evaluate — values RECORDED, not asserted (the null's structure is free by design).
+
+    KNOWN LIMIT (disclosed): clause (ii)'s embedding check reconstructs the null's embeddings by
+    TEXT lookup (first pool occurrence per distinct text), so it verifies the embedding MARGINAL,
+    not which pool rows the generator consumed — a drawn-index/content desynchronization inside
+    the generator is not detectable from the run alone (guarded instead by the generator's single
+    `drawn` array and its determinism tests)."""
     from scipy.stats import ks_2samp
 
+    # All clauses use explicit `raise AssertionError` (the positive_control.py idiom), NEVER bare
+    # `assert`: a fail-closed gate must survive `python -O` / PYTHONOPTIMIZE, which strips asserts
+    # (review finding 2026-07-17).
     times = np.asarray(null_run.times, dtype=float)
     n = times.size
-    assert n > 0, "matched-null gate: empty stream (fail-closed)"
+    if n == 0:
+        raise AssertionError("matched-null gate: empty stream (fail-closed)")
 
     # (i) decoupling tripwire
     n_read = int(np.asarray(null_run.read_emit_success).sum())
-    assert n_read == 0, (
-        f"matched-null gate: decoupling tripwire — {n_read} read->emit successes in a null with "
-        f"no read channel (residual coupling or a construction bug)")
+    if n_read != 0:
+        raise AssertionError(
+            f"matched-null gate: decoupling tripwire — {n_read} read->emit successes in a null "
+            f"with no read channel (residual coupling or a construction bug)")
 
-    # (ii) matching quality
+    # (ii) matching quality. Round-granularity is validated BEFORE binning — astype truncation
+    # would otherwise fold a corrupted clock (1.5 -> round 1) back into an 'exact' count match.
+    rounds = np.floor(times).astype(np.int64)
+    if not np.all(times == rounds) or (n and rounds.min() < 0):
+        raise AssertionError(
+            "matched-null gate: non-round-granular or negative event times (corrupted clock)")
     counts = np.asarray(marginals.per_round_counts, dtype=np.int64)
-    got = np.bincount(times.astype(np.int64), minlength=counts.size)
-    assert np.array_equal(got, counts), (
-        "matched-null gate: per-round counts differ from the matched window's (exact-copy rule)")
+    got = np.bincount(rounds, minlength=counts.size)
+    if not np.array_equal(got, counts):
+        raise AssertionError(
+            "matched-null gate: per-round counts differ from the matched window's "
+            "(exact-copy rule)")
 
     len_null = np.array([len(c) for c in null_run.content], dtype=float)
     len_pool = np.array([len(c) for c in marginals.authored_texts], dtype=float)
     ks = float(ks_2samp(len_null, len_pool).statistic)
     ks_bound = spec.MATCH_LEN_KS_COEFF * np.sqrt(
         (len_null.size + len_pool.size) / (len_null.size * len_pool.size))
-    assert ks <= ks_bound, (
-        f"matched-null gate: authored-length KS {ks:.4f} > bound {ks_bound:.4f} "
-        f"(wrong pool or wrong field)")
+    if ks > ks_bound:
+        raise AssertionError(
+            f"matched-null gate: authored-length KS {ks:.4f} > bound {ks_bound:.4f} "
+            f"(wrong pool or wrong field)")
 
     pool_embeddings = np.asarray(pool_embeddings)
     lookup = {}
@@ -107,11 +126,13 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
     mu_null = E_null.mean(axis=0)
     mu_pool = pool_embeddings.mean(axis=0)
     denom = float(np.linalg.norm(mu_null) * np.linalg.norm(mu_pool))
-    assert denom > 0, "matched-null gate: degenerate mean embedding"
+    if denom <= 0:
+        raise AssertionError("matched-null gate: degenerate mean embedding")
     mean_cos = float(mu_null @ mu_pool / denom)
-    assert mean_cos >= spec.MATCH_EMBED_MEAN_COS_MIN, (
-        f"matched-null gate: mean-embedding cosine {mean_cos:.4f} < "
-        f"{spec.MATCH_EMBED_MEAN_COS_MIN} (embedding-marginal mismatch)")
+    if mean_cos < spec.MATCH_EMBED_MEAN_COS_MIN:
+        raise AssertionError(
+            f"matched-null gate: mean-embedding cosine {mean_cos:.4f} < "
+            f"{spec.MATCH_EMBED_MEAN_COS_MIN} (embedding-marginal mismatch)")
 
     # (iii) well-formed; structure RECORDED, never asserted
     av = post_reply_tree(times, null_run.root_id, null_run.parent_idx)

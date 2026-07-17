@@ -93,6 +93,16 @@ def test_gate_trips_on_doctored_per_round_counts():
         check_matched_null_control(run, marg, E)
 
 
+def test_gate_trips_on_non_round_granular_times():
+    # Review 2026-07-17: a corrupted clock (1.5) must trip the gate, not truncate back into an
+    # 'exact' count match via astype.
+    marg, E = _toy_marginals()
+    run = generate_matched_null(11, marg, E, 0.5)
+    run.times[2] = 1.5
+    with pytest.raises(AssertionError, match="round-granular"):
+        check_matched_null_control(run, marg, E)
+
+
 def test_gate_trips_on_length_marginal_mismatch():
     # Larger n so the sample-size KS bound has power (at n=6 the DKW-scale bound saturates > 1 and
     # structurally cannot trip — that is the formula working as designed, not a gap).

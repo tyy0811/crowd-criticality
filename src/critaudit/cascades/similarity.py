@@ -36,12 +36,14 @@ def rounded_cosines(E_query, E_cand, *, decimals=lps.COSINE_DECIMALS):
     return np.round(E_query @ E_cand.T, decimals)
 
 
-def _best_earlier_round_candidate(round_of, E, *, decimals):
-    """Per event i: (best_idx[i], best_cos[i]) over all events of STRICTLY EARLIER rounds
-    (the frozen CANDIDATE_RULE), argmax of the ROUNDED cosine, ties -> lowest index (np.argmax's
-    first-max on the rounded values). Events with no earlier-round candidate get (-1, nan).
-    Theta-independent — the threshold is applied by the caller, so calibration sweeps the grid
-    without recomputing."""
+def _per_round_blocks(round_of, E, *, decimals):
+    """The SINGLE home of the frozen CANDIDATE_RULE: per round r (ascending), the block
+    (members, n_cand, C) where members = the round's event indices (stream order), n_cand = the
+    strictly-earlier-round prefix length, and C = the (len(members), n_cand) ROUNDED cosine block
+    (None when the round has no candidates). Attribution and calibration both consume these
+    blocks, so the candidate rule cannot drift between them and each cosine is computed exactly
+    once per consumer. Returns a list (not a generator) so validation is fail-closed at call
+    time."""
     round_of = np.asarray(round_of)
     E = np.asarray(E)
     n = round_of.size
@@ -49,14 +51,26 @@ def _best_earlier_round_candidate(round_of, E, *, decimals):
         raise ValueError(f"round_of ({n}) and embeddings ({E.shape[0]}) misaligned")
     if n and np.any(np.diff(round_of) < 0):
         raise ValueError("round_of must be non-decreasing (stream order)")
-    best_idx = np.full(n, -1, dtype=np.int64)
-    best_cos = np.full(n, np.nan)
+    blocks = []
     for r in np.unique(round_of):
         members = np.flatnonzero(round_of == r)
         n_cand = int(np.searchsorted(round_of, r))   # strictly-earlier rounds = prefix (sorted)
-        if n_cand == 0:
+        C = rounded_cosines(E[members], E[:n_cand], decimals=decimals) if n_cand else None
+        blocks.append((members, n_cand, C))
+    return blocks
+
+
+def _best_earlier_round_candidate(round_of, E, *, decimals):
+    """Per event i: (best_idx[i], best_cos[i]) over the frozen candidate blocks — argmax of the
+    ROUNDED cosine, ties -> lowest index (np.argmax's first-max on the rounded values). Events
+    with no earlier-round candidate get (-1, nan). Theta-independent — the threshold is applied
+    by the caller, so calibration sweeps the grid without recomputing."""
+    n = np.asarray(round_of).size
+    best_idx = np.full(n, -1, dtype=np.int64)
+    best_cos = np.full(n, np.nan)
+    for members, n_cand, C in _per_round_blocks(round_of, E, decimals=decimals):
+        if C is None:
             continue
-        C = rounded_cosines(E[members], E[:n_cand], decimals=decimals)
         best_idx[members] = np.argmax(C, axis=1)     # first max = lowest index (frozen tie rule)
         best_cos[members] = C[np.arange(members.size), best_idx[members]]
     return best_idx, best_cos
@@ -67,18 +81,14 @@ def attribute_similarity_parents(round_of, E, theta, *, spec=lps):
     post_reply_tree's invariants by construction (an earlier-round parent is an earlier index).
     parent(i) = argmax rounded-cosine over strictly-earlier-round events iff that rounded cosine
     >= theta (rounded theta comparison on rounded cosines); ties -> lowest index; else root."""
+    from critaudit.cascades.extract import roots_from_parents
     best_idx, best_cos = _best_earlier_round_candidate(round_of, E, decimals=spec.COSINE_DECIMALS)
     theta = round(float(theta), spec.COSINE_DECIMALS)
     n = best_idx.size
     parent_idx = np.full(n, -1, dtype=np.int64)
     hit = ~np.isnan(best_cos) & (best_cos >= theta)
     parent_idx[hit] = best_idx[hit]
-    root_id = np.arange(n, dtype=np.int64)
-    for i in range(n):                                # forward pass valid: parent_idx[i] < i
-        p = parent_idx[i]
-        if p >= 0:
-            root_id[i] = root_id[p]
-    return parent_idx, root_id
+    return parent_idx, roots_from_parents(parent_idx)
 
 
 @dataclass(frozen=True)
@@ -95,12 +105,15 @@ class CalibrationResult:
                                 # move the argmax — an unreachable child is wrong at every theta)
 
 
-def _stream_scores(parent_idx_true, round_of, E, *, spec):
+def _stream_scores(parent_idx_true, round_of, E, *, spec, compute_auc=True):
     """Per-stream theta-independent score vectors for the pooled calibration. Returns
     (child_hit, child_cos, root_cos, unreachable, pos, neg): the argmax-candidate correctness and
     rounded-cosine per true-edged child, the best rounded-cosine per true root (-inf when no
     candidate exists), the per-child same-round-unreachable flags, and the AUC pair scores
-    (true-parent vs non-parent-candidate). FAIL-CLOSED on empty/misaligned inputs."""
+    (true-parent vs non-parent-candidate; empty when compute_auc=False — the fixed-theta rates
+    path does not need them). FAIL-CLOSED on empty/misaligned inputs AND on a stream with zero
+    true edges (a degraded all-roots window must fail loudly, never silently contribute only FPR
+    mass to the pooled objective)."""
     parent_idx_true = np.asarray(parent_idx_true, dtype=np.int64)
     round_of = np.asarray(round_of)
     n = parent_idx_true.size
@@ -110,29 +123,35 @@ def _stream_scores(parent_idx_true, round_of, E, *, spec):
         raise ValueError("parent_idx_true and round_of misaligned")
     children = np.flatnonzero(parent_idx_true >= 0)
     roots = np.flatnonzero(parent_idx_true < 0)
+    if children.size == 0:
+        raise ValueError("calibrate_theta: stream has no true edges (fail-closed)")
 
-    best_idx, best_cos = _best_earlier_round_candidate(round_of, E, decimals=spec.COSINE_DECIMALS)
+    # One pass over the frozen candidate blocks: best candidate AND (optionally) the AUC pair
+    # scores from the SAME rounded cosine rows — computed once, one candidate-rule home.
+    best_idx = np.full(n, -1, dtype=np.int64)
+    best_cos = np.full(n, np.nan)
+    pos, neg = [], []
+    for members, n_cand, C in _per_round_blocks(round_of, E, decimals=spec.COSINE_DECIMALS):
+        if C is None:
+            continue
+        best = np.argmax(C, axis=1)                  # first max = lowest index (frozen tie rule)
+        best_idx[members] = best
+        best_cos[members] = C[np.arange(members.size), best]
+        if compute_auc:
+            for k, i in enumerate(members):
+                row = C[k]
+                p = parent_idx_true[i]
+                if 0 <= p < n_cand:
+                    pos.append(row[p])
+                    neg.extend(np.delete(row, p))
+                else:
+                    neg.extend(row)
 
     child_hit = best_idx[children] == parent_idx_true[children]        # same-round parent -> False
     child_cos = np.where(np.isnan(best_cos[children]), -np.inf, best_cos[children])
     root_cos = (np.where(np.isnan(best_cos[roots]), -np.inf, best_cos[roots])
                 if roots.size else np.array([]))
-    unreachable = (round_of[parent_idx_true[children]] >= round_of[children]
-                   if children.size else np.array([], dtype=bool))
-
-    # AUC pair scores (recorded diagnostic): deterministic, candidates never cross streams.
-    pos, neg = [], []
-    for i in range(n):
-        n_cand = int(np.searchsorted(round_of, round_of[i]))
-        if n_cand == 0:
-            continue
-        c = rounded_cosines(E[i:i + 1], E[:n_cand], decimals=spec.COSINE_DECIMALS)[0]
-        p = parent_idx_true[i]
-        if p >= 0 and p < n_cand:
-            pos.append(c[p])
-            neg.extend(np.delete(c, p))
-        else:
-            neg.extend(c)
+    unreachable = round_of[parent_idx_true[children]] >= round_of[children]
     return child_hit, child_cos, root_cos, unreachable, pos, neg
 
 
@@ -167,8 +186,9 @@ def calibrate_theta_pooled(streams, *, spec=lps):
     theta_star = float(grid[i_star])
 
     if pos and neg:
+        from scipy.stats import rankdata                 # midranks: identical to a hand-rolled
         scores = np.concatenate([np.asarray(pos), np.asarray(neg)])
-        ranks = _midranks(scores)
+        ranks = rankdata(scores, method="average")       # average-rank tie handling (Mann-Whitney)
         auc = float((ranks[:len(pos)].sum() - len(pos) * (len(pos) + 1) / 2)
                     / (len(pos) * len(neg)))
     else:
@@ -191,25 +211,10 @@ def attribution_rates_at_theta(parent_idx_true, round_of, E, theta, *, spec=lps)
     """(tpr, fpr) of the frozen attribution rule on ONE stream at a FIXED theta — the per-window
     diagnostic recorded alongside the pooled theta*."""
     child_hit, child_cos, root_cos, _, _, _ = _stream_scores(
-        parent_idx_true, round_of, E, spec=spec)
+        parent_idx_true, round_of, E, spec=spec, compute_auc=False)
     theta = round(float(theta), spec.COSINE_DECIMALS)
-    if child_hit.size == 0:
-        raise ValueError("attribution_rates_at_theta: no true edges in stream (fail-closed)")
     tpr = float(np.mean(child_hit & (child_cos >= theta)))
     fpr = float(np.mean(root_cos >= theta)) if root_cos.size else 0.0
     return tpr, fpr
 
 
-def _midranks(x):
-    """1-based midranks (average ranks on ties) — the Mann-Whitney AUC convention."""
-    order = np.argsort(x, kind="mergesort")
-    ranks = np.empty(x.size, dtype=float)
-    sx = x[order]
-    i = 0
-    while i < x.size:
-        j = i
-        while j + 1 < x.size and sx[j + 1] == sx[i]:
-            j += 1
-        ranks[order[i:j + 1]] = (i + j) / 2 + 1
-        i = j + 1
-    return ranks

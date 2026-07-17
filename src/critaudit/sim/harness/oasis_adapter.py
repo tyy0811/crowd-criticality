@@ -70,10 +70,18 @@ def _authored_content(action, content, quote_content):
             "fall back to the quoted ORIGINAL's text (the 2026-07-17 correction's bug class)")
     if action == "create_post" and quote_content is not None:
         raise ValueError("create_post row carries quote_content — schema drift; re-run recon")
-    if action == "repost" and authored != "":
+    if action == "repost" and (quote_content is not None or authored != ""):
         raise ValueError(
-            "repost row carries authored text — schema drift; reposts store content='' "
-            "(verified fixture + all 3 archived cohort DBs)")
+            "repost row carries quote_content or authored text — schema drift; reposts store "
+            "content='' with NULL quote_content (verified fixture + all 3 archived cohort DBs)")
+    if action is None and quote_content is not None:
+        # The traceless tolerance exists ONLY for parentless roots (manual/news seeds); a quote
+        # implies a parent, so a traceless row carrying quote_content is drift, not tolerance —
+        # without this the fail-closed claim would silently degrade to fail-open in exactly the
+        # unvalidated corner (review finding 2026-07-17).
+        raise ValueError(
+            "traceless post row carries quote_content — schema drift; the trace-action "
+            "cross-check cannot validate it and quotes always have parents (traced)")
     return authored
 
 

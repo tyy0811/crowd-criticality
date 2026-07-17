@@ -58,9 +58,9 @@ def test_band_record_carries_no_embargoed_keys(toy_windows):
     assert not re.search(r'"[^"]*(tau|p_boot|alpha|gate_|n_emit)[^"]*"\s*:', blob)
 
 
-_ARCHIVE = os.path.expanduser("~/crowd-crit-runs/s2_harness_subinc1")
-_BANKED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "results", "s2_llm_parrot_null", "2026-07-17_nstruct_band.json")
+# Single-source locations (review 2026-07-17): the driver owns them.
+from critaudit.experiments.llm_parrot_null import (   # noqa: E402
+    BANKED_BAND_JSON as _BANKED, DEFAULT_ARCHIVE as _ARCHIVE)
 
 
 @pytest.mark.slow

@@ -87,11 +87,35 @@ frozen at `f4bfac4`. No regime claim, no criticality claim, no artifact-gate ver
 
 ## 6. Verification & reproducibility
 
-Fast suite **162 passed** (`-m "not slow"`, torch-free). $0 slow subset **6 passed**: corrected-exporter
+Fast suite **166 passed** (`-m "not slow"`, torch-free). $0 slow subset **6 passed**: corrected-exporter
 archive regression (spreads to 2 dp, PASS unchanged), embedding-pin determinism ×3, calibration
 byte-reproduction, band byte-reproduction — both banked JSONs regenerate **byte-identically** from the
 archive through the pinned realization (environment drift fails loudly; re-bank consciously).
-Runtimes: calibration ~64 s; band ~57 s (local CPU).
+Runtimes: calibration ~51 s; band ~36 s (local CPU, post-review single-pass refactor).
+
+**Whole-branch review pass (2026-07-17, 8-angle multi-agent + fixes applied same-day).** Verified
+findings fixed, none touching a frozen rule or a banked value: the isolation gate's bare `assert`s
+converted to explicit `raise AssertionError` (the `positive_control.py` idiom — bare asserts are
+stripped under `python -O`, silently disabling a fail-closed gate); gate round-granularity validated
+before count binning (truncation could fold a corrupted clock back into an "exact" match);
+`_authored_content` tightened (repost `quote_content` NULL-contract; traceless-row `quote_content`
+fail-open corner closed) with power checks; per-stream no-true-edges guard restored in the pooled
+calibration (a degraded all-roots window must fail loudly, not contribute silent FPR mass);
+`test_embedding_pin` no longer imports torch at collection (a broken-torch interpreter aborted the
+whole suite); childless-root-through-SQL export coverage restored; firewall scan set now
+self-discovers modules importing the sub-inc-2 surface (the hand-maintained list was a completeness
+hole); banked-JSON writer refuses NaN; banked-path constants single-sourced from the driver; shared
+`roots_from_parents`/`round_indices` helpers (root/round semantics single-homed across cohort and
+null paths); `_midranks` → `scipy.stats.rankdata`; calibration AUC computed from the same per-round
+cosine blocks as attribution (one candidate-rule home, ~2× faster). **Refactor byte-safety proven:
+the post-refactor calibration regenerates the committed T5 artifact byte-identically.** The band
+JSON was re-banked once for one additive provenance field (`windows_source: "archive"` — a synthetic
+band can no longer masquerade as the registered artifact); all 64 `n_struct` values, the max edge,
+and the q95 are unchanged to the last digit. Deferred to the owner (design consideration, frozen
+surfaces untouched): carrying the OASIS action as a first-class event-type field (reposts are
+currently `''`-content events; under def-#2 all `''` texts embed identically, so resampled `''`
+events chain deterministically — one disclosed component of the manufactured-duplicate mechanism);
+the non-editable-install path residual (registered substrate is the editable checkout).
 
 ## 7. Flagged for owner ratification (design §9 + the T5 finding)
 

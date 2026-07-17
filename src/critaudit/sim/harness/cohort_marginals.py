@@ -26,23 +26,31 @@ COHORT_MARGINALS_FIELDS = ("per_round_counts", "authored_texts")
 assert tuple(f.name for f in fields(CohortMarginals)) == COHORT_MARGINALS_FIELDS
 
 
-def extract_marginals(run):
-    """HarnessRun -> CohortMarginals. FAIL-CLOSED: the exported cohort clock is round-granular
-    (created_at = integer round, verified on all 3 archived DBs) — non-integral times mean this is
-    not a round-granular stream and the per-round marginal is undefined; empty streams raise.
-    n_rounds is inferred as max(round)+1 from the observed stream (every registered window has all
-    20 rounds active; a trailing silent round would be invisible here — disclosed)."""
-    times = np.asarray(run.times, dtype=float)
+def round_indices(times):
+    """Round index per event of a ROUND-GRANULAR stream — the ONE home of the validation
+    (fail-closed on empty, non-integral, or negative times), shared by extract_marginals and the
+    experiments driver so the calibration streams and the matched per-round profile can never be
+    computed under divergent round rules (review consolidation 2026-07-17)."""
+    times = np.asarray(times, dtype=float)
     if times.size == 0:
-        raise ValueError("extract_marginals: empty stream (fail-closed)")
+        raise ValueError("round_indices: empty stream (fail-closed)")
     rounds = np.floor(times).astype(np.int64)
     if not np.all(times == rounds):
-        raise ValueError("extract_marginals: non-integral event times — not a round-granular "
-                         "stream; per-round marginal undefined (fail-closed)")
+        raise ValueError("round_indices: non-integral event times — not a round-granular "
+                         "stream; per-round semantics undefined (fail-closed)")
     if rounds.min() < 0:
-        raise ValueError("extract_marginals: negative round index")
+        raise ValueError("round_indices: negative round index")
+    return rounds
+
+
+def extract_marginals(run):
+    """HarnessRun -> CohortMarginals. FAIL-CLOSED via round_indices (the exported cohort clock is
+    round-granular — created_at = integer round, verified on all 3 archived DBs). n_rounds is
+    inferred as max(round)+1 from the observed stream (every registered window has all 20 rounds
+    active; a trailing silent round would be invisible here — disclosed)."""
+    rounds = round_indices(run.times)
     counts = np.bincount(rounds, minlength=int(rounds.max()) + 1)
-    if len(run.content) != times.size:
+    if len(run.content) != rounds.size:
         raise ValueError("extract_marginals: content misaligned with times")
     return CohortMarginals(per_round_counts=tuple(int(c) for c in counts),
                            authored_texts=tuple(run.content))

@@ -7,6 +7,23 @@ from critaudit.types import AvalancheSet
 from critaudit.cascades import spec
 
 
+def roots_from_parents(parent_idx):
+    """root_id from parent_idx by the forward pass (valid because parent_idx[i] < i): each event
+    inherits its parent's root; parentless events are their own root. The ONE home of root
+    propagation — assemble.build_parent_root (exported cohort streams) and
+    cascades.similarity.attribute_similarity_parents (similarity-attributed streams) both call
+    this, so cohort trees and matched-null trees can never be built under divergent root
+    semantics (review consolidation 2026-07-17)."""
+    parent_idx = np.asarray(parent_idx, dtype=np.int64)
+    n = parent_idx.size
+    root_id = np.arange(n, dtype=np.int64)
+    for i in range(n):
+        p = parent_idx[i]
+        if p >= 0:
+            root_id[i] = root_id[p]
+    return root_id
+
+
 def post_reply_tree(times, root_id, parent_idx) -> AvalancheSet:
     """#1: cascade = reply tree (events sharing a root). size = tree event-count; duration = generation
     depth (root depth 1), matching galton_watson's gen convention -> a critical stream gives tau~1.5,
