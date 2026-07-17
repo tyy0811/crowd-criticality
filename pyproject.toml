@@ -12,6 +12,10 @@ dependencies = ["numpy>=1.24", "scipy>=1.10", "powerlaw>=1.5"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# Embedding realization for the matched parrot null (sub-inc 2, design 2026-07-17 §4).
+# OPTIONAL so the core install and the CI fast path never import torch; the pinned model
+# revision lives in critaudit.sim.controls.llm_parrot_spec.
+embed = ["sentence-transformers>=3.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
