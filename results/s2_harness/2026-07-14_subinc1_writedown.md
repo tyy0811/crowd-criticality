@@ -187,7 +187,9 @@ pending (re-run in a fresh window with a detached runner).**
   Emit mix (through the kill): comment 291 / quote 279 / post 76 / repost 0 (+do_nothing 66).
 - **Post-hoc control on the TRUNCATED artifact (labelled — NOT the registered measurement):** PASS —
   frac_size1 0.5263 ≤ 0.95 · giant_frac 0.2430 ≤ 0.90 · read_emit_ratio 0.5046 > 0.01 ·
-  length_spread 35.619 > 1.0 · n_events 646.
+  length_spread 35.619 > 1.0 · n_events 646. *[35.619 computed under the quoted-original content bug
+  (2026-07-17 amendment below); UNCORRECTABLE — the killed-window trace DB lived in the volatile
+  scratchpad and was not archived. Non-registered value; annotated, not re-derived.]*
 - **Live anchor stats (max/p99 completion vs 512; max prompt vs 5632+1731): NOT CAPTURED — the
   per-call usage_log lived in the killed process's memory.** To capture next window regardless of
   kill timing, the runner should flush usage_log to disk incrementally. Zero rejections through 17
@@ -200,7 +202,8 @@ pending (re-run in a fresh window with a detached runner).**
 - **Seed 20260627 (window A′, REGISTERED) — 2026-07-14/15, detached runner (pid 5234), status
   `SEED_COMPLETE_CONTROL_PASS`, instrument `repaired@140dce9`:**
   - Positive control: **PASS** — frac_size1 0.4765625 · giant_frac 0.14705882352941177 ·
-    read_emit_ratio 0.43983957219251335 · length_spread 38.232342169432776.
+    read_emit_ratio 0.43983957219251335 · length_spread 38.232342169432776 *[CORRECTED 2026-07-17
+    → 39.0131219625409 under the authored-content rule; PASS unchanged; amendment below]*.
   - n_events = 748 (20/20 rounds with activity).
   - emit-by-round = {0:14, 1:50, 2:49, 3:49, 4:48, 5:47, 6:47, 7:43, 8:41, 9:38, 10:38, 11:32,
     12:38, 13:30, 14:26, 15:37, 16:33, 17:30, 18:28, 19:30}.
@@ -224,7 +227,7 @@ pending (re-run in a fresh window with a detached runner).**
 
 **Seed 20260628 (window B′, REGISTERED) — SEED_COMPLETE_CONTROL_PASS (2026-07-15).**
 Positive control PASS: frac_size1 0.4752 (≤0.95) · giant_frac 0.1369 (≤0.90) · read_emit_ratio 0.5000
-(>0.01) · length_spread 44.61 (>1.0). n_events = 672; all 20/20 rounds active (emit-by-round: 14, 49, 46,
+(>0.01) · length_spread 44.61 (>1.0) *[CORRECTED 2026-07-17 → 40.77; PASS unchanged; amendment below]*. n_events = 672; all 20/20 rounds active (emit-by-round: 14, 49, 46,
 48, 48, 48, 47, 43, 37, 35, 31, 29, 28, 23, 24, 24, 25, 24, 27, 21). Rejections = 0 (1000 calls,
 loud-400 guard silent). Live anchors: completion max 277 / p99 175 vs cap 512 (margin 1.85× — the live
 tail has grown across seeds: 200 → 277; cap still clears with real margin, recorded for the sweep's
@@ -237,7 +240,7 @@ first-run outputs were never seen, so no selection channel exists. Raw artifacts
 
 **Seed 20260629 (window C, REGISTERED) — SEED_COMPLETE_CONTROL_PASS (2026-07-15).**
 Positive control PASS: frac_size1 0.5167 (≤0.95) · giant_frac 0.2141 (≤0.90) · read_emit_ratio 0.5196
-(>0.01) · length_spread 42.43 (>1.0). n_events = 766; all 20/20 rounds active (emit-by-round: 17, 50, 50,
+(>0.01) · length_spread 42.43 (>1.0) *[CORRECTED 2026-07-17 → 38.82; PASS unchanged; amendment below]*. n_events = 766; all 20/20 rounds active (emit-by-round: 17, 50, 50,
 49, 48, 47, 47, 45, 44, 41, 37, 42, 37, 37, 27, 30, 33, 31, 25, 29). Rejections = 0 (1000 calls). Live
 anchors: completion max 245 / p99 185 vs cap 512 · prompt max 6916 / p99 6912 vs anchor 7363. Tokens
 {prompt 5,916,892, completion 57,251, total 5,974,143, n_calls 1000}. News posts (user 50): 0. Runner
@@ -249,7 +252,8 @@ wall 96 min (natural exit); window ≈ 102 min ≈ $1.87 (A10, dashboard authori
 All three frozen seeds clear the fail-closed positive control at the frozen operating point with margin
 on every threshold: read_emit_ratio 0.4398 / 0.5000 / 0.5196 (floor 0.01) · frac_size1 0.4766 / 0.4752 /
 0.5167 (max 0.95) · giant_frac 0.1471 / 0.1369 / 0.2141 (max 0.90) · length_spread 38.23 / 44.61 / 42.43
-(floor 1.0). n_events 748 / 672 / 766; every seed 20/20 effective rounds; **0 server rejections across
+(floor 1.0) *[spreads CORRECTED 2026-07-17 → 39.01 / 40.77 / 38.82; every PASS unchanged; amendment
+below]*. n_events 748 / 672 / 766; every seed 20/20 effective rounds; **0 server rejections across
 all 3,000 registered calls** (loud-400 guard silent — the context-wall amendment held live in all three
 windows). @slow-test assertions verified on the registered set: len == 3 TRUE; every ratio > 0 TRUE.
 News draws per frozen schedule: 0 / 1 / 0. Completion-tail watch across seeds: live max 212 / 277 /
@@ -266,3 +270,31 @@ wipe pre-read): ≈$2 bounded by scaledown, dashboard authoritative · Window B�
 $1.67 · Window C (seed 3 registered): $1.87. Phase-B GPU total incl. Task 9 + the broken-instrument
 window: ≈ **$11 upper bound of the $60 budget**. Cohort token total (registered runs): 17,973,032
 across exactly 3,000 calls.
+
+## Amendment — authored-content correction (2026-07-17, sub-inc-2 T2; owner-flagged, independently reproduced)
+
+**The bug (owner-flagged 2026-07-17; verified against all three archived DBs + the committed recon
+fixture):** OASIS stores the QUOTED ORIGINAL's text in `post.content` for quote rows; the author's
+own text lives in `post.quote_content` (the schema's own comment: "NULL if this is an original post
+or a repost"). The sub-inc-1 exporter read `content` for every post-table event, so quote events —
+289 of windowA2's 426 post-events (39 %) — carried someone else's text in `HarnessRun.content`.
+Reposts store `content = ''` (verified empty in all three DBs): no authored text by construction.
+
+**Corrected rule (frozen, sub-inc-2 design 2026-07-17 §3):** authored text = `quote_content` if
+non-NULL, else `content or ""`; fail-closed trace-action cross-check (quote without `quote_content`,
+create_post with `quote_content`, or a repost carrying authored text raises).
+
+**Blast radius:** `content` feeds ONLY the positive control's `length_spread` (verified sole
+consumer at correction time) and sub-inc-2's forthcoming content marginals — it enters no pairing,
+no tree, no anchor. Recomputed registered diagnostics under the corrected exporter (full pipeline;
+independently reproduced to the digit before the fix landed): `length_spread` **39.0131219625409 /
+40.76991769747588 / 38.82290131207583** (was 38.232… / 44.61 / 42.43); `frac_size1`, `giant_frac`,
+`read_emit_ratio`, `n_events` all bit-identical to the registered values. **Every registered
+positive-control PASS is unchanged** (floor 1.0 — margin ≥ 38×). The 3/3 cohort verdict and its
+scope (accessibility only, no regime claim) are untouched.
+
+**Enforcement:** `tests/test_harness_export.py::test_archived_cohort_corrected_spreads_and_pass_unchanged`
+(@slow, archive-gated) re-derives the corrected spreads through the real pipeline; the fast tier
+power-checks both fail-closed cross-check paths. `HarnessRun.content` semantics are hereafter
+**authored text**. The window-A killed-run post-hoc value (35.619) is annotated uncorrectable above
+(trace DB not archived); the broken-instrument window-2 artifact is a discard and is not re-derived.

@@ -51,6 +51,32 @@ def _emit_item_id(action, info):
     return f"{ns}:{d[key]}"
 
 
+def _authored_content(action, content, quote_content):
+    """The AUTHORED text of a post-table event (registered correction, design 2026-07-17 §3).
+    OASIS stores the QUOTED ORIGINAL's text in `post.content` for quote rows; the author's own text
+    lives in `post.quote_content` (schema comment: 'NULL if this is an original post or a repost');
+    reposts store content='' — a repost is a pure structural re-emission with no authored text
+    (verified against the recon fixture and all 3 archived cohort DBs, 2026-07-17).
+
+    Data rule: `quote_content` if present, else `content or ""`. FAIL-CLOSED cross-check against the
+    emit's trace `action` where one exists (`action is None` for a parentless root without a trace
+    row, mirroring `_event_seq`'s tolerance): a quote_post without quote_content, a create_post WITH
+    quote_content, or a repost carrying any authored text is schema drift and raises — never a
+    silent fallback to someone else's text."""
+    authored = quote_content if quote_content is not None else (content or "")
+    if action == "quote_post" and quote_content is None:
+        raise ValueError(
+            "quote_post row lacks quote_content — schema drift; the authored side would silently "
+            "fall back to the quoted ORIGINAL's text (the 2026-07-17 correction's bug class)")
+    if action == "create_post" and quote_content is not None:
+        raise ValueError("create_post row carries quote_content — schema drift; re-run recon")
+    if action == "repost" and authored != "":
+        raise ValueError(
+            "repost row carries authored text — schema drift; reposts store content='' "
+            "(verified fixture + all 3 archived cohort DBs)")
+    return authored
+
+
 def _event_seq(item_id, parent_item_id, seq_by_item):
     """The event's `seq` = the rowid of its OWN emit trace row (the counter shared with refreshes).
     STRICT join: an emit WITH a parent must have a trace row (every emit-with-parent joins cleanly on
@@ -82,9 +108,11 @@ def export_harness_run(db_path, *, timestamp_col):
     raises on an unresolvable/duplicate/out-of-order parent (surfaced, not swallowed)."""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        # Pass 1: trace -> refreshes + emit(item_id) -> rowid. rowid is trace insertion order.
+        # Pass 1: trace -> refreshes + emit(item_id) -> rowid AND -> action (the authored-content
+        # cross-check source). rowid is trace insertion order.
         refreshes = []
         seq_by_item = {}
+        action_by_item = {}
         for rowid, uid, ts, action, info in con.execute(
                 f"SELECT rowid, user_id, {timestamp_col}, action, info FROM trace ORDER BY rowid"):
             if action == "refresh":
@@ -97,15 +125,20 @@ def export_harness_run(db_path, *, timestamp_col):
             if item in seq_by_item:
                 raise ValueError(f"duplicate emit trace for {item!r} (rowid {rowid}) — schema drift")
             seq_by_item[item] = int(rowid)
+            action_by_item[item] = action
 
         # Pass 2: content rows -> events (posts before comments keeps parents before children on ties).
+        # Content is the AUTHORED text (2026-07-17 correction): quote rows carry the quoted
+        # ORIGINAL's text in `content` and the author's own in `quote_content` — _authored_content
+        # selects the authored side, fail-closed against the trace action.
         events = []
-        for pid, uid, orig, content, ts in con.execute(
-                f"SELECT post_id, user_id, original_post_id, content, {timestamp_col} "
+        for pid, uid, orig, content, quote_content, ts in con.execute(
+                f"SELECT post_id, user_id, original_post_id, content, quote_content, {timestamp_col} "
                 f"FROM post ORDER BY post_id"):
             item_id = f"post:{pid}"
             parent = f"post:{orig}" if orig is not None else None      # NULL original_post_id = root
-            events.append(EventRecord(item_id, float(ts), int(uid), parent, content or "",
+            authored = _authored_content(action_by_item.get(item_id), content, quote_content)
+            events.append(EventRecord(item_id, float(ts), int(uid), parent, authored,
                                       seq=_event_seq(item_id, parent, seq_by_item)))
         for cid, pid, uid, content, ts in con.execute(
                 f"SELECT comment_id, post_id, user_id, content, {timestamp_col} "
