@@ -467,12 +467,15 @@ async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_pat
     # 2. Custom Platform (recsys_type frozen -> RecsysType enum; refresh_rec_post_count = the frozen
     #    coupling knob; max_rec_post_len >= that count so the knob is not silently capped). Passing
     #    recsys_type explicitly is REQUIRED (Platform default is "reddit", platform.py:64).
+    #    following_post_count is passed EXPLICITLY (registered constant, sub-inc-2 T3) so the frozen
+    #    value binds, never the installed library's default.
     platform = Platform(
         db_path=db_path,
         channel=Channel(),
         recsys_type=RecsysType(hs.RECSYS_TYPE),
         refresh_rec_post_count=social_influence,
         max_rec_post_len=MAX_REC_POST_LEN,
+        following_post_count=hs.FOLLOWING_POST_COUNT,
     )
     env = make(agent_graph=graph, platform=platform, database_path=db_path)
 

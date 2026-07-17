@@ -391,3 +391,12 @@ OVERHEAD_MAX_MEASURED = 1731
 #     what they can still reply to). Declared NOW as an assumption surface of the harness; it must
 #     not be discovered later as an unrecorded confound. Downstream interpretation of cascade/tree
 #     statistics inherits this property.
+
+#     FOLLOWING_POST_COUNT — Platform's follow-feed page size. REGISTRATION, not a change
+#     (sub-inc-2 T3, design 2026-07-17 §5): the archived reference cohort ran under the OASIS
+#     library default following_post_count=3 (platform.py:67), recorded in the sub-inc-1 writedown's
+#     effective-substrate section as NOT spec-registered with explicit registration deferred to this
+#     increment. Registered here at that exact effective value; run_oasis_minimal now passes it
+#     EXPLICITLY to Platform(...) so future runs bind this frozen constant, never whatever the
+#     installed library happens to default to (the same drift class the MODEL_REVISION pin closes).
+FOLLOWING_POST_COUNT = 3
