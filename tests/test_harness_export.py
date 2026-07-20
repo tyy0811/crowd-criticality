@@ -3,6 +3,7 @@ import os
 import sqlite3
 
 import numpy as np
+import pytest
 from critaudit.sim.harness.types import EventRecord, RefreshRecord
 from critaudit.sim.harness.assemble import build_parent_root, assemble_harness_run
 from critaudit.sim.controls.anchors import read_emit_ratio, n_struct
@@ -76,20 +77,34 @@ def _build_synthetic_oasis_db(path):
     fixture's emits are all quote_posts, so comments are only exercised here). Round-granular clock:
     round 0 creates two root posts; round 1 refreshes then emits two comments that SHARE created_at
     with the refresh, so the read->emit pair reconstructs ONLY via the trace-rowid seq join (a bare
-    created_at compare would reconstruct 0). All parents resolve to an existing post."""
+    created_at compare would reconstruct 0). All parents resolve to an existing post.
+    PROVENANCE (2026-07-17, authored-content correction): `quote_content` column added to match the
+    verified real schema (fixture + all 3 archived cohort DBs) — OASIS stores the QUOTED ORIGINAL's
+    text in `content` for quote rows and the author's own text in `quote_content` ('NULL if this is
+    an original post or a repost', schema comment); reposts store content=''. The quote row below
+    carries the original's text in `content` exactly as OASIS does, so the exporter's authored-side
+    selection is exercised, and the repost row exercises the authored-empty path."""
     con = sqlite3.connect(path)
     con.executescript(
         """
         CREATE TABLE post(post_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT,
-                          original_post_id INT, content TEXT, created_at REAL);
+                          original_post_id INT, content TEXT, quote_content TEXT, created_at REAL);
         CREATE TABLE comment(comment_id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INT,
                              user_id INT, content TEXT, created_at REAL);
         CREATE TABLE trace(user_id INT, created_at REAL, action TEXT, info TEXT);
         """
     )
-    # round 0: two ORIGINAL posts (original_post_id NULL = root)
-    con.execute("INSERT INTO post VALUES(1, 1, NULL, 'root a', 0.0)")
-    con.execute("INSERT INTO post VALUES(2, 2, NULL, 'root b', 0.0)")
+    # round 0: two ORIGINAL posts (original_post_id NULL = root; quote_content NULL)
+    con.execute("INSERT INTO post VALUES(1, 1, NULL, 'root a', NULL, 0.0)")
+    con.execute("INSERT INTO post VALUES(2, 2, NULL, 'root b', NULL, 0.0)")
+    # round 1: u2 QUOTES post 2 — content = the ORIGINAL's text (OASIS behaviour), authored text in
+    # quote_content. round 2: u1 REPOSTS post 1 — content='' (no authored text by construction).
+    con.execute("INSERT INTO post VALUES(3, 2, 2, 'root b', 'quote by u2', 1.0)")
+    con.execute("INSERT INTO post VALUES(4, 1, 1, '', NULL, 2.0)")
+    # round 0: a CHILDLESS root by u3 — participates in NO edge, so the export path's full
+    # post-table scan (not a join) is what keeps it alive as a singleton avalanche (coverage
+    # restored per review 2026-07-17: a join-based exporter regression must fail here).
+    con.execute("INSERT INTO post VALUES(5, 3, NULL, 'lone root c', NULL, 0.0)")
     # round 1: two comments, both replying to post 1 (a comment's parent is a POST -> post:1)
     con.execute("INSERT INTO comment VALUES(1, 1, 1, 'reply by u1', 1.0)")
     con.execute("INSERT INTO comment VALUES(2, 1, 2, 'reply by u2', 1.0)")
@@ -104,6 +119,12 @@ def _build_synthetic_oasis_db(path):
                 (json.dumps({"content": "reply by u1", "comment_id": 1}),))   # rowid 4 -> comment:1
     con.execute("INSERT INTO trace VALUES(2, 1.0, 'create_comment', ?)",
                 (json.dumps({"content": "reply by u2", "comment_id": 2}),))   # rowid 5 -> comment:2
+    con.execute("INSERT INTO trace VALUES(2, 1.0, 'quote_post', ?)",
+                (json.dumps({"quoted_id": 2, "new_post_id": 3}),))            # rowid 6 -> post:3
+    con.execute("INSERT INTO trace VALUES(1, 2.0, 'repost', ?)",
+                (json.dumps({"reposted_id": 1, "new_post_id": 4}),))          # rowid 7 -> post:4
+    con.execute("INSERT INTO trace VALUES(3, 0.0, 'create_post', ?)",
+                (json.dumps({"content": "lone root c", "post_id": 5}),))      # rowid 8 -> post:5
     con.commit()
     con.close()
 
@@ -112,18 +133,78 @@ def test_export_harness_run_from_synthetic_db(tmp_path):
     db = str(tmp_path / "oasis.db")
     _build_synthetic_oasis_db(db)
     run = export_harness_run(db, timestamp_col="created_at")
-    # 4 events: 2 root posts + 2 comments.
-    assert run.times.size == 4
-    assert run.content == ["root a", "root b", "reply by u1", "reply by u2"]
-    # tree: post1 <- {comment1, comment2} (size 3) and the lone post2 (size 1).
+    # 7 events: 3 root posts (one childless) + 1 quote + 1 repost + 2 comments.
+    assert run.times.size == 7
+    # AUTHORED content (2026-07-17 correction): the quote event carries the AUTHOR's text
+    # (quote_content), never the quoted original's; the repost carries no authored text.
+    assert run.content == ["root a", "root b", "lone root c",
+                           "quote by u2", "reply by u1", "reply by u2", ""]
+    # trees: post1 <- {comment1, comment2, repost4} (size 4), post2 <- quote3 (size 2), and the
+    # CHILDLESS post5 surviving export as a singleton (size 1 — the full-scan coverage).
     av = post_reply_tree(run.times, run.root_id, run.parent_idx)
-    assert sorted(av.sizes.tolist()) == [1, 3]
-    # read->emit: only u1's comment reconstructs — u1's refresh (rowid 3) precedes its same-created_at
-    # comment (rowid 4) via the seq join; u2 never refreshed. If the seq join were absent (seq=0), the
-    # same-round pair would NOT reconstruct, so this asserts the join end-to-end.
-    assert int(run.read_emit_success.sum()) == 1
-    assert read_emit_ratio(run) == 0.25
+    assert sorted(av.sizes.tolist()) == [1, 2, 4]
+    # read->emit: u1's comment reconstructs via the seq join (refresh rowid 3 < comment rowid 4 at the
+    # same created_at); u1's round-2 repost of served post:1 reconstructs across rounds; u2 never
+    # refreshed, so neither of u2's emits pairs. If the seq join were absent (seq=0), the same-round
+    # pair would NOT reconstruct, so this still asserts the join end-to-end.
+    assert int(run.read_emit_success.sum()) == 2
+    assert read_emit_ratio(run) == 2 / 7
     assert read_emit_ratio(run) <= n_struct(av)   # accessibility is a subset of realized edges
+
+
+def test_authored_content_cross_check_quote_missing_raises(tmp_path):
+    """FAIL-CLOSED power check: a quote_post trace whose post row lacks quote_content is schema
+    drift — the exporter must raise, never silently fall back to the quoted original's text."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    con.execute("UPDATE post SET quote_content = NULL WHERE post_id = 3")
+    con.commit()
+    con.close()
+    with pytest.raises(ValueError, match="quote_post"):
+        export_harness_run(db, timestamp_col="created_at")
+
+
+def test_authored_content_cross_check_repost_nonempty_raises(tmp_path):
+    """FAIL-CLOSED power check: a repost row carrying authored text contradicts the verified schema
+    (reposts store content='' in the fixture and all 3 archived DBs) — raise on drift."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    con.execute("UPDATE post SET content = 'sneaky authored text' WHERE post_id = 4")
+    con.commit()
+    con.close()
+    with pytest.raises(ValueError, match="repost"):
+        export_harness_run(db, timestamp_col="created_at")
+
+
+def test_authored_content_cross_check_repost_empty_quote_content_raises(tmp_path):
+    """FAIL-CLOSED power check (review 2026-07-17): quote_content=''-instead-of-NULL on a repost
+    breaks the schema's NULL contract even though the authored text would still be '' — the drift
+    tripwire must fire on the contract, not just on the visible text."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    con.execute("UPDATE post SET quote_content = '' WHERE post_id = 4")
+    con.commit()
+    con.close()
+    with pytest.raises(ValueError, match="repost"):
+        export_harness_run(db, timestamp_col="created_at")
+
+
+def test_authored_content_traceless_row_with_quote_content_raises(tmp_path):
+    """FAIL-CLOSED power check (review 2026-07-17): the traceless tolerance exists only for
+    parentless roots — a traceless PARENTLESS row carrying quote_content cannot be validated by
+    the trace-action cross-check and quotes always have parents, so it must raise rather than
+    silently export unvalidated text (the fail-open corner the review flagged)."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO post VALUES(9, 3, NULL, 'orig', 'sneaky quote text', 0.0)")
+    con.commit()                                       # no trace row for post 9
+    con.close()
+    with pytest.raises(ValueError, match="traceless"):
+        export_harness_run(db, timestamp_col="created_at")
 
 
 _REAL_TRACE = os.path.join(os.path.dirname(__file__), "fixtures", "oasis_trace_recon.sqlite")
@@ -141,6 +222,40 @@ def test_export_harness_run_real_trace_regression():
     assert int((run.parent_idx < 0).sum()) == 3                  # 3 original (root) posts
     assert int(run.read_emit_success.sum()) == 3                 # A3: 3 same-round read->emit pairs
     assert read_emit_ratio(run) == 3 / 7
+    # PROVENANCE (2026-07-17): extends the banked anchor to the corrected AUTHORED-content rule —
+    # the counts above are content-independent and untouched. Events time-sort as posts 1..7; the
+    # three quote events (posts 4-6) must carry the AUTHOR's text (quote_content), not the quoted
+    # original's (which OASIS stores in `content`); the manual repost (post 7) has no authored text.
+    assert run.content[3].startswith("Love the adventure")
+    assert run.content[4].startswith("Love the new AI-powered")
+    assert run.content[5].startswith("Absolutely love this!")
+    assert run.content[6] == ""
+
+
+_COHORT_ARCHIVE = os.path.expanduser("~/crowd-crit-runs/s2_harness_subinc1")
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not os.path.isdir(_COHORT_ARCHIVE),
+                    reason="registered cohort archive not present on this machine")
+def test_archived_cohort_corrected_spreads_and_pass_unchanged():
+    """Registered-value correction regression (design 2026-07-17 §3; owner-verified 2026-07-17,
+    independently reproduced to the digit): under the AUTHORED-content rule the three registered
+    windows re-derive length_spread 39.01 / 40.77 / 38.82 (was 38.23 / 44.61 / 42.43 under the
+    quoted-original bug) and every positive-control PASS is unchanged. These are REPRODUCTION
+    anchors of already-registered corrections, never tuning targets — a mismatch is a finding."""
+    from critaudit.sim.harness.positive_control import check_positive_control
+    expected = {
+        "windowA2_seed20260627": (748, 39.01),
+        "windowB2_seed20260628": (672, 40.77),
+        "windowC_seed20260629": (766, 38.82),
+    }
+    for window, (n_events, spread) in expected.items():
+        db = os.path.join(_COHORT_ARCHIVE, window, "trace", "oasis.db")
+        run = export_harness_run(db, timestamp_col="created_at")
+        diag = check_positive_control(run)      # raises on any threshold failure — PASS unchanged
+        assert run.times.size == n_events
+        assert round(float(diag["length_spread"]), 2) == spread
 
 
 # --- harness_spec: FROZEN result-blind surface consumed-guard (Task 6) --------------------------

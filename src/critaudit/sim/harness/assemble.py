@@ -30,12 +30,8 @@ def build_parent_root(events):
             if not p < i:
                 raise ValueError(f"parent {e.parent_item_id!r} does not precede child {e.item_id!r}")
             parent_idx[i] = p
-    root_id = np.arange(n, dtype=np.int64)
-    for i in range(n):                       # forward pass valid: parent_idx[i] < i
-        p = parent_idx[i]
-        if p >= 0:
-            root_id[i] = root_id[p]
-    return times, root_id, parent_idx
+    from critaudit.cascades.extract import roots_from_parents   # single home of root propagation
+    return times, roots_from_parents(parent_idx), parent_idx
 
 
 def compute_read_emit(events, refreshes):
