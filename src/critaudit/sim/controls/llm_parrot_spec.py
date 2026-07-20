@@ -102,8 +102,14 @@ from critaudit.sim.controls.parrot_spec import (   # noqa: E402  (re-export, sin
 # reference edge.
 
 # =============================================================================================
-# DEFINED — NOT EVALUATED (design §9a/§9b; sub-inc 3 executes these; nothing here computes them)
+# DEFINED — NOT EVALUATED (design §9a/§9b) — RETIRED-AS-BLOCKED (owner, 2026-07-20)
 # =============================================================================================
+# RETIREMENT (comment-only annotation, sanctioned by the DECISIONS 2026-07-20 sub-inc-3 freeze
+# entry): both §9 criteria below COMPOSED ON DEFINITION #2, whose construction-v2 calibration
+# FAILED (membership-ARI 0.2497 vs the Gate-D 0.90 floor — see the 2026-07-17 amendment entry).
+# They are RETIRED-AS-BLOCKED: sub-inc 3 does NOT execute them; no def-#2-dependent tau or
+# n_emit work runs anywhere. The constants remain as the historical frozen record (never
+# evaluated); probe_spec.RETIRED_CRITERIA carries the string-only cross-reference.
 
 # §9a — the sharp "matched structure manufactures tau" criterion. Over the SWEEP_BAND_SEEDS
 # frozen null seeds, sub-inc 3 runs the tau-arm on each null stream's forest; the null
