@@ -1,5 +1,4 @@
-"""Sub-inc-2 T5 tests: cohort marginal extraction (fast, synthetic) + the real-archive theta
-calibration (@slow, archive-gated) — including byte-reproduction of the BANKED committed JSON."""
+"""Cohort marginal extraction plus byte-reproduction of definition-#2 calibration v2."""
 import json
 import os
 
@@ -45,29 +44,29 @@ def test_extract_marginals_fail_closed():
 # Single-source locations (review 2026-07-17): the driver owns them; a re-bank updates driver +
 # tests in one edit.
 from critaudit.experiments.llm_parrot_null import (   # noqa: E402
-    BANKED_THETA_JSON as _BANKED, DEFAULT_ARCHIVE as _ARCHIVE)
+    BANKED_CALIBRATION_JSON as _BANKED, DEFAULT_ARCHIVE as _ARCHIVE)
 
 
 @pytest.mark.slow
 @pytest.mark.skipif(not os.path.isdir(_ARCHIVE),
                     reason="registered cohort archive not present on this machine")
-def test_theta_calibration_reproduces_banked_json(tmp_path):
-    """The banked calibration is byte-reproducible from the archive through the pinned realization
-    (determinism anchor: embeddings + pooled Youden + JSON serialization). An environment drift
-    (torch/sentence-transformers version) fails HERE loudly — re-bank consciously, never silently.
-    The banked theta and its J<0-everywhere curve are a recorded FINDING (argmax-similarity does
-    not recover true reply parents in this topically homogeneous crowd); asserting the reproduction
-    is NOT endorsing theta as a good discriminator."""
+def test_similarity_calibration_reproduces_banked_json(tmp_path):
+    """The finite-window membership calibration is reproducible and explicitly failed."""
     pytest.importorskip("sentence_transformers", reason="optional [embed] extra not installed")
-    from critaudit.experiments.llm_parrot_null import run_theta_calibration
+    from critaudit.experiments.llm_parrot_null import run_similarity_calibration
 
-    out = str(tmp_path / "theta.json")
-    rec = run_theta_calibration(_ARCHIVE, out_path=out)
-    assert 0.0 < rec["theta"] < 1.0
+    out = str(tmp_path / "similarity.json")
+    rec = run_similarity_calibration(_ARCHIVE, out_path=out)
+    assert rec["artifact"] == "similarity_calibration"
+    assert rec["construction_version"] == 2
+    assert rec["status"] == "failed"
+    assert rec["mean_ari"] < rec["spec"]["recovery_threshold"]
+    assert rec["window"] in rec["spec"]["window_grid"]
+    assert 0.0 < rec["theta"] <= 1.0
     assert set(rec["per_window"]) == {"20260627", "20260628", "20260629"}
     # Schema firewall (design §8): no embargoed key anywhere in the banked artifact.
     import re
     blob = json.dumps(rec)
     assert not re.search(r'"[^"]*(tau|p_boot|alpha|gate_|n_emit)[^"]*"\s*:', blob)
-    # Byte-reproduction of the committed banked artifact.
+    # The failed finding is still a deterministic banked calibration artifact.
     assert open(out, "rb").read() == open(_BANKED, "rb").read()

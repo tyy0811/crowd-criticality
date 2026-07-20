@@ -26,11 +26,16 @@ def test_embedding_pin_frozen():
 
 
 def test_theta_calibration_procedure_frozen():
-    assert 0.0 < lps.THETA_GRID_START < lps.THETA_GRID_STOP < 1.0
+    assert 0.0 < lps.THETA_GRID_START < lps.THETA_GRID_STOP <= 1.0
     assert 0.0 < lps.THETA_GRID_STEP < (lps.THETA_GRID_STOP - lps.THETA_GRID_START)
-    assert lps.THETA_CRITERION == "attribution_youden"
-    assert lps.THETA_TIE_RULE == "largest"                        # fewest manufactured edges
-    assert lps.CANDIDATE_RULE == "strictly_earlier_round"         # parent_idx[i] < i structural
+    assert lps.THETA_CRITERION == "cascade_membership_ari"
+    assert lps.THETA_TIE_RULE == "smallest_window_then_largest_theta"
+    assert lps.CANDIDATE_RULE == "strictly_earlier_round_within_window"
+    assert lps.WINDOW_GRID == tuple(range(1, 20))
+    assert lps.RECOVERY_THRESHOLD == 0.90
+    assert lps.CALIBRATION_CONSTRUCTION_VERSION == 2
+    assert "definition-#2 contract repair" in lps.CALIBRATION_AMENDMENT
+    assert lps.RESAMPLING_RULE == "uniform_with_replacement_empirical_bootstrap"
 
 
 def test_matching_gate_formulas_frozen_sample_size_only():

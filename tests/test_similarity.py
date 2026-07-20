@@ -6,7 +6,8 @@ import pytest
 
 from critaudit.cascades.extract import post_reply_tree
 from critaudit.cascades.similarity import (
-    CalibrationResult, attribute_similarity_parents, calibrate_theta, rounded_cosines, theta_grid)
+    CalibrationResult, attribute_similarity_parents, calibrate_similarity_rule,
+    calibrate_similarity_rule_pooled, rounded_cosines, theta_grid)
 
 
 def _unit(v):
@@ -16,9 +17,9 @@ def _unit(v):
 
 def test_theta_grid_frozen_shape():
     g = theta_grid()
-    assert g[0] == 0.01 and g[-1] == 0.99
-    assert g.size == 197                              # inclusive 0.01..0.99 step 0.005
-    assert np.all((g > 0) & (g < 1))
+    assert g[0] == 0.01 and g[-1] == 1.0
+    assert g.size == 199                              # inclusive 0.01..1.00 step 0.005
+    assert np.all((g > 0) & (g <= 1))
     assert np.allclose(np.diff(g), 0.005)
 
 
@@ -40,7 +41,7 @@ def test_attribution_planted_parents_and_tree_feed():
         _unit([1, 0.08, 0]),                          # closest earlier = event 2 (round 1)
     ])
     round_of = np.array([0, 0, 1, 1, 2])
-    parent_idx, root_id = attribute_similarity_parents(round_of, E, 0.8)
+    parent_idx, root_id = attribute_similarity_parents(round_of, E, 0.8, window=2)
     assert parent_idx.tolist() == [-1, -1, 0, -1, 2]
     assert root_id.tolist() == [0, 1, 0, 3, 0]
     # Feeds the extractor without error (invariants hold by construction).
@@ -52,14 +53,14 @@ def test_attribution_threshold_and_no_candidates():
     E = np.stack([_unit([1, 0]), _unit([0.9, 0.1])])
     round_of = np.array([0, 1])
     # theta above the pair cosine -> everything is a root; round-0 events always roots.
-    parent_idx, root_id = attribute_similarity_parents(round_of, E, 0.9999)
+    parent_idx, root_id = attribute_similarity_parents(round_of, E, 0.9999, window=1)
     assert parent_idx.tolist() == [-1, -1] and root_id.tolist() == [0, 1]
 
 
 def test_attribution_tie_breaks_to_lowest_index():
     E = np.stack([_unit([1, 0]), _unit([1, 0]), _unit([1, 0.01])])   # events 0,1 identical
     round_of = np.array([0, 0, 1])
-    parent_idx, _ = attribute_similarity_parents(round_of, E, 0.5)
+    parent_idx, _ = attribute_similarity_parents(round_of, E, 0.5, window=1)
     assert parent_idx[2] == 0                          # rounded tie -> first (lowest) index
 
 
@@ -68,9 +69,19 @@ def test_attribution_deterministic():
     E = rng.normal(size=(40, 8))
     E /= np.linalg.norm(E, axis=1, keepdims=True)
     round_of = np.sort(rng.integers(0, 5, size=40))
-    a1 = attribute_similarity_parents(round_of, E, 0.3)
-    a2 = attribute_similarity_parents(round_of, E, 0.3)
+    a1 = attribute_similarity_parents(round_of, E, 0.3, window=4)
+    a2 = attribute_similarity_parents(round_of, E, 0.3, window=4)
     assert np.array_equal(a1[0], a2[0]) and np.array_equal(a1[1], a2[1])
+
+
+def test_attribution_excludes_candidates_outside_finite_window():
+    # Event 2 is identical to old event 0 but only recent event 1 is eligible at w=1.
+    E = np.stack([_unit([1, 0]), _unit([0.8, 0.2]), _unit([1, 0])])
+    round_of = np.array([0, 2, 3])
+    narrow, _ = attribute_similarity_parents(round_of, E, 0.5, window=1)
+    wide, _ = attribute_similarity_parents(round_of, E, 0.5, window=3)
+    assert narrow.tolist() == [-1, -1, 1]
+    assert wide.tolist() == [-1, 0, 0]
 
 
 def _planted_calibration_problem():
@@ -84,73 +95,54 @@ def _planted_calibration_problem():
     return parent_idx_true, round_of, E
 
 
-def test_calibrate_theta_planted_recovery_and_tie_rule():
+def test_calibrate_similarity_rule_planted_membership_recovery_and_tie_rule():
     parent_idx_true, round_of, E = _planted_calibration_problem()
-    res = calibrate_theta(parent_idx_true, round_of, E)
+    res = calibrate_similarity_rule(parent_idx_true, round_of, E)
     assert isinstance(res, CalibrationResult)
-    assert res.theta == 0.99                           # ties -> LARGEST theta (frozen)
-    assert res.tpr == 1.0 and res.fpr == 0.0
-    assert res.auc == 1.0                              # perfect separation, planted
-    assert res.same_round_ceiling == 0.0
-    assert len(res.j_curve) == theta_grid().size
+    assert res.window == 1                             # ties -> SMALLEST finite window
+    assert res.theta == 1.0                            # then LARGEST theta
+    assert res.mean_ari == 1.0
+    assert res.per_stream_ari == (1.0,)
+    assert res.status == "passed"
+    assert len(res.recovery_surface) == 19 * theta_grid().size
 
 
-def test_calibrate_theta_same_round_ceiling_caps_tpr():
-    # One child's true parent is SAME-round -> unreachable under strictly_earlier_round: it is
-    # wrong at every theta, capping TPR at 1/2 and recording the ceiling honestly.
-    e0, e1, e2 = _unit([1, 0, 0]), _unit([0, 1, 0]), _unit([0, 0, 1])
-    E = np.stack([e0, e1, e0, e2])
+def test_calibration_status_failed_blocks_least_bad_rule_semantics():
+    # Homogeneous embeddings merge two planted cascades at every registered theta.
+    E = np.ones((4, 2), dtype=float) / np.sqrt(2)
     round_of = np.array([0, 0, 1, 1])
-    parent_idx_true = np.array([-1, -1, 0, 2])         # event 3's parent is same-round event 2
-    res = calibrate_theta(parent_idx_true, round_of, E)
-    assert res.same_round_ceiling == 0.5
-    assert res.tpr <= 0.5
+    parent_idx_true = np.array([-1, -1, 0, 1])
+    res = calibrate_similarity_rule(parent_idx_true, round_of, E)
+    assert res.mean_ari < 0.90
+    assert res.status == "failed"
 
 
-def test_calibrate_theta_fail_closed():
+def test_calibrate_similarity_rule_fail_closed():
     _, round_of, E = _planted_calibration_problem()
     with pytest.raises(ValueError, match="no true edges"):
-        calibrate_theta(np.full(5, -1), round_of, E)
+        calibrate_similarity_rule(np.full(5, -1), round_of, E)
     with pytest.raises(ValueError, match="empty"):
-        calibrate_theta(np.array([]), np.array([]), np.empty((0, 3)))
+        calibrate_similarity_rule(np.array([]), np.array([]), np.empty((0, 3)))
     with pytest.raises(ValueError, match="misaligned"):
-        calibrate_theta(np.array([-1, 0]), np.array([0]), E[:2])
+        calibrate_similarity_rule(np.array([-1, 0]), np.array([0]), E[:2])
 
 
 def test_attribution_rejects_unsorted_rounds():
     E = np.eye(3)
     with pytest.raises(ValueError, match="non-decreasing"):
-        attribute_similarity_parents(np.array([1, 0, 2]), E, 0.5)
+        attribute_similarity_parents(np.array([1, 0, 2]), E, 0.5, window=1)
 
 
 def test_calibrate_pooled_single_stream_equals_wrapper():
-    from critaudit.cascades.similarity import calibrate_theta_pooled
     parent_idx_true, round_of, E = _planted_calibration_problem()
-    single = calibrate_theta(parent_idx_true, round_of, E)
-    pooled = calibrate_theta_pooled([(parent_idx_true, round_of, E)])
+    single = calibrate_similarity_rule(parent_idx_true, round_of, E)
+    pooled = calibrate_similarity_rule_pooled([(parent_idx_true, round_of, E)])
     assert single == pooled                            # frozen dataclass equality, field-for-field
 
 
-def test_calibrate_pooled_pools_denominators_across_streams():
-    from critaudit.cascades.similarity import calibrate_theta_pooled
-    # Stream A: perfect planted recovery (2 children, TPR 1). Stream B: its one child's true
-    # parent is SAME-round -> unreachable, wrong at every theta. Pooled TPR at theta* = 2/3 and
-    # the pooled ceiling = 1/3 — denominators pooled over ALL true-edged children, per the frozen
-    # procedure (not averaged per-stream, which would give 1/2 and 1/4 here).
+def test_calibrate_pooled_uses_equal_stream_mean_ari():
     a = _planted_calibration_problem()
     e0, e1 = _unit([1, 0, 0]), _unit([0, 1, 0])
-    # child idx 2 (round 1) has true parent idx 1 (round 1): same-round, parent_idx[i] < i as in
-    # every real exported stream.
     b = (np.array([-1, -1, 1]), np.array([0, 1, 1]), np.stack([e0, e1, e0]))
-    res = calibrate_theta_pooled([a, b])
-    assert res.same_round_ceiling == pytest.approx(1 / 3)
-    assert res.tpr == pytest.approx(2 / 3)
-    assert res.fpr == 0.0
-
-
-def test_attribution_rates_at_theta_matches_curve_point():
-    from critaudit.cascades.similarity import attribution_rates_at_theta
-    parent_idx_true, round_of, E = _planted_calibration_problem()
-    res = calibrate_theta(parent_idx_true, round_of, E)
-    tpr, fpr = attribution_rates_at_theta(parent_idx_true, round_of, E, res.theta)
-    assert (tpr, fpr) == (res.tpr, res.fpr)
+    res = calibrate_similarity_rule_pooled([a, b])
+    assert res.mean_ari == pytest.approx(np.mean(res.per_stream_ari))

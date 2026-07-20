@@ -1,7 +1,7 @@
 """The MATCHED parrot null generator + its isolation gate (sub-inc-2 design 2026-07-17 §7).
 
 Belief-decoupling is STRUCTURAL: `generate_matched_null` takes only (seed, marginals,
-pool_embeddings, theta, spec) — there is no field a read channel, a served set, or a per-agent
+pool_embeddings, theta, window, spec) — there is no field a read channel, a served set, or a per-agent
 rate could enter through. CohortMarginals is the whitelisted two-field firewall surface; whatever
 reply structure the output exhibits is emergent from content statistics alone under the frozen
 attribution rule. The do-not-match list binds: branching, avalanche sizes, and per-agent rates
@@ -22,7 +22,7 @@ from critaudit.sim.controls.anchors import burstiness, fano_profile, n_struct
 from critaudit.sim.harness.types import HarnessRun
 
 
-def generate_matched_null(seed, marginals, pool_embeddings, theta, *, spec=lps):
+def generate_matched_null(seed, marginals, pool_embeddings, theta, *, window, spec=lps):
     """One matched-null stream (design §7): times = round index r repeated c_r times (the
     cohort window's per-round aggregate counts copied EXACTLY — the substrate-imposed cadence
     including the real declining ramp); content = uniform with-replacement resample of the
@@ -50,7 +50,8 @@ def generate_matched_null(seed, marginals, pool_embeddings, theta, *, spec=lps):
     round_of = np.repeat(np.arange(counts.size), counts)
     times = round_of.astype(float)
     E_stream = pool_embeddings[drawn]
-    parent_idx, root_id = attribute_similarity_parents(round_of, E_stream, theta, spec=spec)
+    parent_idx, root_id = attribute_similarity_parents(
+        round_of, E_stream, theta, window=window, spec=spec)
     return HarnessRun(times=times, root_id=root_id, parent_idx=parent_idx,
                       read_emit_success=np.zeros(n, dtype=bool),
                       content=[pool[i] for i in drawn])
@@ -60,8 +61,8 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
     """Fail-closed isolation gate, three clauses (design §7). Raises AssertionError on any
     failure (blocks interpretation); returns the recorded diagnostics dict on pass.
 
-    (i)  DECOUPLING TRIPWIRE: read_emit_success.sum() == 0 — enforcement over assumption,
-         mirroring simulate_parrot's successes == 0.
+    (i)  DECOUPLING TRIPWIRE: exact boolean vector, all False — enforcement over assumption,
+         immune to numeric cancellation and mirroring simulate_parrot's successes == 0.
     (ii) MATCHING QUALITY (frozen sample-size formulas, construction-bug detectors): per-round
          counts == the window's EXACTLY (a copy — tolerance zero); two-sample KS on authored
          lengths <= MATCH_LEN_KS_COEFF*sqrt((n+m)/(n*m)); cosine(mean null embedding, mean pool
@@ -79,14 +80,38 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
     # All clauses use explicit `raise AssertionError` (the positive_control.py idiom), NEVER bare
     # `assert`: a fail-closed gate must survive `python -O` / PYTHONOPTIMIZE, which strips asserts
     # (review finding 2026-07-17).
-    times = np.asarray(null_run.times, dtype=float)
+    try:
+        times = np.asarray(null_run.times, dtype=float)
+    except (TypeError, ValueError) as e:
+        raise AssertionError("matched-null gate: event times are not numeric") from e
+    if times.ndim != 1:
+        raise AssertionError("matched-null gate: times misaligned (expected one-dimensional)")
     n = times.size
     if n == 0:
         raise AssertionError("matched-null gate: empty stream (fail-closed)")
 
+    root_id = np.asarray(null_run.root_id)
+    parent_idx = np.asarray(null_run.parent_idx)
+    read_emit = np.asarray(null_run.read_emit_success)
+    if (root_id.shape != (n,) or parent_idx.shape != (n,) or read_emit.shape != (n,)
+            or len(null_run.content) != n):
+        raise AssertionError(
+            "matched-null gate: event fields misaligned; times/root_id/parent_idx/"
+            "read_emit_success/content must all have length n")
+    if not np.issubdtype(root_id.dtype, np.integer) or not np.issubdtype(
+            parent_idx.dtype, np.integer):
+        raise AssertionError("matched-null gate: root_id and parent_idx must have integer dtype")
+    if read_emit.dtype != np.dtype(bool):
+        raise AssertionError(
+            "matched-null gate: read_emit_success must have boolean dtype (fail-closed)")
+    if not all(isinstance(c, str) for c in null_run.content):
+        raise AssertionError("matched-null gate: content must be aligned text strings")
+    if not np.isfinite(times).all():
+        raise AssertionError("matched-null gate: nonfinite event times")
+
     # (i) decoupling tripwire
-    n_read = int(np.asarray(null_run.read_emit_success).sum())
-    if n_read != 0:
+    if np.any(read_emit):
+        n_read = int(np.count_nonzero(read_emit))
         raise AssertionError(
             f"matched-null gate: decoupling tripwire — {n_read} read->emit successes in a null "
             f"with no read channel (residual coupling or a construction bug)")
@@ -97,15 +122,25 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
     if not np.all(times == rounds) or (n and rounds.min() < 0):
         raise AssertionError(
             "matched-null gate: non-round-granular or negative event times (corrupted clock)")
-    counts = np.asarray(marginals.per_round_counts, dtype=np.int64)
+    raw_counts = np.asarray(marginals.per_round_counts)
+    if (raw_counts.ndim != 1 or raw_counts.size == 0
+            or not np.issubdtype(raw_counts.dtype, np.integer)
+            or np.any(raw_counts < 0)):
+        raise AssertionError("matched-null gate: malformed per-round count marginal")
+    counts = raw_counts.astype(np.int64, copy=False)
+    if int(counts.sum()) != n:
+        raise AssertionError("matched-null gate: per-round counts misaligned with event fields")
     got = np.bincount(rounds, minlength=counts.size)
     if not np.array_equal(got, counts):
         raise AssertionError(
             "matched-null gate: per-round counts differ from the matched window's "
             "(exact-copy rule)")
 
+    pool = tuple(marginals.authored_texts)
+    if not pool or not all(isinstance(c, str) for c in pool):
+        raise AssertionError("matched-null gate: malformed authored-text pool")
     len_null = np.array([len(c) for c in null_run.content], dtype=float)
-    len_pool = np.array([len(c) for c in marginals.authored_texts], dtype=float)
+    len_pool = np.array([len(c) for c in pool], dtype=float)
     ks = float(ks_2samp(len_null, len_pool).statistic)
     ks_bound = spec.MATCH_LEN_KS_COEFF * np.sqrt(
         (len_null.size + len_pool.size) / (len_null.size * len_pool.size))
@@ -115,8 +150,19 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
             f"(wrong pool or wrong field)")
 
     pool_embeddings = np.asarray(pool_embeddings)
+    if pool_embeddings.ndim != 2 or pool_embeddings.shape[0] != len(pool):
+        raise AssertionError(
+            "matched-null gate: pool embeddings misaligned with authored-text pool")
+    if not np.isfinite(pool_embeddings).all():
+        raise AssertionError("matched-null gate: nonfinite pool embeddings")
+    norms = np.linalg.norm(pool_embeddings, axis=1)
+    if not np.allclose(norms, 1.0, rtol=1e-5, atol=1e-6):
+        raise AssertionError("matched-null gate: pool embeddings are not normalized")
     lookup = {}
-    for text, row in zip(marginals.authored_texts, pool_embeddings):
+    for text, row in zip(pool, pool_embeddings):
+        if text in lookup and not np.allclose(lookup[text], row, rtol=0.0, atol=1e-7):
+            raise AssertionError(
+                "matched-null gate: duplicate text has inconsistent pool embeddings")
         lookup.setdefault(text, row)
     try:
         E_null = np.stack([lookup[c] for c in null_run.content])
@@ -135,7 +181,16 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
             f"{spec.MATCH_EMBED_MEAN_COS_MIN} (embedding-marginal mismatch)")
 
     # (iii) well-formed; structure RECORDED, never asserted
-    av = post_reply_tree(times, null_run.root_id, null_run.parent_idx)
+    try:
+        av = post_reply_tree(times, root_id, parent_idx)
+    except (IndexError, ValueError) as e:
+        raise AssertionError(f"matched-null gate: malformed parent/root structure: {e}") from e
+    children = np.flatnonzero(parent_idx >= 0)
+    exact_text_edges = int(sum(
+        null_run.content[i] == null_run.content[parent_idx[i]] for i in children))
+    empty_endpoint_edges = int(sum(
+        not null_run.content[i] or not null_run.content[parent_idx[i]] for i in children))
+    n_edges = int(children.size)
     horizon = float(counts.size)
     diag = {
         "n_events": int(n),
@@ -146,5 +201,12 @@ def check_matched_null_control(null_run, marginals, pool_embeddings, *, spec=lps
         "ks_len_stat": ks,
         "ks_len_bound": float(ks_bound),
         "mean_embed_cos": mean_cos,
+        # Interpretation diagnostic for the owner-ratified empirical-bootstrap parrot: exact
+        # text atoms (including replacement-amplified repeats) are deliberately in scope.
+        "n_attributed_edges": n_edges,
+        "exact_text_edges": exact_text_edges,
+        "exact_text_edge_fraction": (float(exact_text_edges / n_edges) if n_edges else 0.0),
+        "nonidentical_text_edges": n_edges - exact_text_edges,
+        "empty_endpoint_edges": empty_endpoint_edges,
     }
     return diag

@@ -6,6 +6,10 @@ convention; SHA-256 `5805d702…e5e2be` pinned in `llm_parrot_spec.DESIGN_DOC_SH
 **$0 increment:** everything below ran local CPU against the durable archive
 (`~/crowd-crit-runs/s2_harness_subinc1/`); no GPU, no LLM call, no network (embedding revision cached).
 
+> **Post-review amendment:** Sections 2–7 preserve the original construction-v1 record. Section 8
+> is authoritative for definition #2: v1 is superseded, construction v2 is calibration-blocked,
+> and the v1 `n_struct` band is descriptive legacy evidence only.
+
 **Freeze-before-measurement spine (git-visible):** T3 freeze `f4bfac4` (+ T1 spec, hash-pinned) strictly
 precedes the T5 calibration `ab3ac59` and the T7 band `10fbfc2`. The θ-calibration PROCEDURE and every
 constant were frozen before the first cohort measurement ran; θ itself is the procedure's measured
@@ -126,3 +130,42 @@ the non-editable-install path residual (registered substrate is the editable che
 4. **The θ finding itself** (§3): whether sub-inc 3 proceeds with def-#2 at θ\* = 0.99 as frozen, or
    the owner treats J < 0-everywhere as a calibration-does-not-discriminate block on the def-#2 arm
    (a measure-before-amending call that belongs to the owner, not this increment).
+
+## 8. Post-review definition-#2 contract repair and owner ratification
+
+**Contract repaired.** Construction v1 optimized exact-parent Youden over all prior rounds. That did
+not implement `PRE_REGISTRATION.md` §5.2, which requires recovery of known **cascade membership** from
+a recent active-cascade event within finite window `w`. Construction v2 jointly searches every
+attainable registered round window `w = 1…19` and `θ = 0.01…1.00` by 0.005. For each pair it computes
+ARI between recovered single-membership/no-merge labels and true `root_id` separately per registered
+seed, then selects maximum equal-seed mean ARI; ties choose smaller `w`, then larger `θ`. Certification
+requires the existing Gate-D floor, mean ARI ≥ 0.90. The complete surface and status are banked in
+`2026-07-17_theta_calibration.json` as `similarity_calibration`, construction version 2.
+
+**Measured status: FAILED, not a least-bad usable rule.** The best diagnostic pair is `w = 7`,
+`θ = 0.745`, mean ARI **0.2496735**; per-seed ARIs are **0.1877983 / 0.3566462 / 0.2045759**. Every
+registered consumer verifies the artifact/design/spec identity, recomputes its selected pair and
+status from the complete surface, and refuses a non-passing record. Consequently definition #2 and
+the downstream `n_emit` composition are **calibration-blocked**; the diagnostic pair is not banked as
+a usable knob.
+
+**Isolation gate hardened.** The gate now requires exact `(n,)` alignment for times, `root_id`,
+`parent_idx`, and boolean `read_emit_success`, plus `len(content) = n`; rejects non-boolean cancellation
+payloads, nonfinite/non-round times, malformed parent/root structure, malformed counts, nonfinite or
+non-unit pool embeddings, and inconsistent embeddings for duplicate text. Exact-text, nonidentical,
+and empty-endpoint attributed-edge counts are recorded for future bands.
+
+**Resampling interpretation ratified; construction unchanged.** Uniform-with-replacement sampling is
+the empirical-bootstrap **literal-parrot null**. It preserves empirical text atoms in expectation and
+intentionally includes bootstrap-amplified exact repetitions; it is not a fixed-multiset permutation
+null. Review decomposition of the legacy band found 24,953/25,970 attributed edges (96.1%) joined
+byte-identical text, contributing 24,953/46,654 = 0.53485 to mean `n_struct`; nonidentical edges
+contributed about 0.0218. A disclosed permutation sensitivity had median `n_struct = 0.3636` versus
+about 0.555 for the registered bootstrap, confirming that replacement amplification is material and
+part of this null's scope.
+
+**Banking disposition.** The registered attribution construction changed, so the calibration artifact
+was re-banked. Calibration failed, so **no construction-v2 `n_struct` band was generated or banked**.
+The construction-v1 band remains byte-for-byte unchanged (SHA-256
+`b559523b33f3a0c66bbd9b2dd7210d096092a3e6a9e95caf2d2040af10296ced`) and is explicitly
+non-consumable legacy evidence. This resolves owner-ratification item 4 without relaxing Gate D.

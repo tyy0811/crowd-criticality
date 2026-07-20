@@ -4,10 +4,10 @@ Design: docs/superpowers/specs/2026-07-17-llm-parrot-null-subinc2-design.md (unt
 artifact per repo convention; its content is pinned by DESIGN_DOC_SHA256 below and in the
 2026-07-17 DECISIONS freeze entry). A change to any constant here is a SPEC CHANGE, not a tweak.
 
-Every value below is frozen from theory / input-side reasoning BEFORE any sub-inc-2 cohort
-measurement runs (the T5 calibration, the T6 generation, the T7 band). What is frozen for the
-calibration is the PROCEDURE — theta itself is that procedure's measured output, banked in
-results/s2_llm_parrot_null/, never a constant here.
+The original sub-inc-2 surface was frozen before measurement. Construction v2 is the explicit
+post-review, owner-ratified correction recorded by CALIBRATION_AMENDMENT: it restores the missing
+finite window and the pre-registered membership-recovery target, then banks the resulting status.
+The original result remains historical evidence; it is not a consumable definition-#2 rule.
 
 The prototype's do-not-match list (parrot_spec / design 2026-06-25 §4) BINDS UNCHANGED: the
 branching ratio, the avalanche-size distribution, and the per-agent emission rate are never
@@ -43,23 +43,28 @@ EMBED_TORCH_THREADS = 1
 # a sub-1e-6 wobble can never flip an attribution).
 COSINE_DECIMALS = 6
 
-# --- theta calibration (design §6): frozen PROCEDURE, measured output --------------------------
-# Grid: inclusive, start/stop/step. theta* = argmax J(theta) = TPR - FPR over the grid;
-# ties -> LARGEST theta (conservative: fewest manufactured edges).
-#   TPR(theta) = fraction of ALL true-edged children whose attributed parent (argmax rounded
-#                cosine over CANDIDATE_RULE candidates, iff >= theta) equals their true parent —
-#                denominators include same-round-parent children the candidate rule cannot reach
-#                (recorded as same_round_ceiling; identical for cohort and null, cannot move the
-#                argmax: an unreachable child is wrong at every theta).
-#   FPR(theta) = fraction of TRUE ROOTS receiving any attributed parent.
+# --- definition-#2 calibration repair: frozen PROCEDURE, measured output -----------------------
+# The 2026-07-17 review found that exact-parent Youden did not implement PRE_REGISTRATION §5.2:
+# definition #2 promises cascade-membership recovery using a RECENT active-cascade event within
+# a finite window. Construction v2 therefore calibrates (window, theta) jointly against ARI of
+# recovered membership vs true root_id, using the already-frozen Gate-D recovery floor.
+CALIBRATION_CONSTRUCTION_VERSION = 2
+CALIBRATION_AMENDMENT = "DECISIONS.md 2026-07-17 definition-#2 contract repair"
 THETA_GRID_START = 0.01
-THETA_GRID_STOP = 0.99
+THETA_GRID_STOP = 1.0
 THETA_GRID_STEP = 0.005
-THETA_CRITERION = "attribution_youden"
-THETA_TIE_RULE = "largest"
-# Candidates for event i = all events of STRICTLY EARLIER rounds (parent_idx[i] < i structural;
-# no same-time edges; round = the OASIS round-granular created_at tick).
-CANDIDATE_RULE = "strictly_earlier_round"
+THETA_CRITERION = "cascade_membership_ari"
+THETA_TIE_RULE = "smallest_window_then_largest_theta"
+# Every attainable positive lag in the registered 20-round windows; exhaustive, not a selected
+# post-result subset. Candidates satisfy 1 <= child_round - candidate_round <= window.
+WINDOW_GRID = tuple(range(1, 20))
+CANDIDATE_RULE = "strictly_earlier_round_within_window"
+from critaudit.cascades.spec import RECOVERY_THRESHOLD  # noqa: E402 (single-source Gate-D floor)
+
+# Owner-ratified interpretation: this is an empirical-bootstrap literal-parrot null. It preserves
+# the empirical text atoms in expectation and deliberately permits bootstrap-amplified repeats;
+# it is not a fixed-multiset permutation null.
+RESAMPLING_RULE = "uniform_with_replacement_empirical_bootstrap"
 
 # --- matching-quality gate (design §7): sample-size formulas, never tuned ----------------------
 # (i) per-round aggregate counts: an exact copy of the assigned cohort window's -> tolerance ZERO.
@@ -92,7 +97,7 @@ NULL_FANO_WINDOW_SIZES = (1.0, 4.0, 10.0)
 # frozen-surface test trips on.
 from critaudit.sim.controls.parrot_spec import (   # noqa: E402  (re-export, single-source)
     SWEEP_BAND_SEEDS, SWEEP_BAND_QUANTILE, SWEEP_BAND_EDGE)
-# Band reading (design §9c, flagged for owner ratification): SWEEP_BAND_EDGE="max" is the GATE
+# Band reading (design §9c, owner-ratified): SWEEP_BAND_EDGE="max" is the GATE
 # edge (worst case over the seeds); the SWEEP_BAND_QUANTILE (0.95) value is RECORDED as the softer
 # reference edge.
 
