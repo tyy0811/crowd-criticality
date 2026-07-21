@@ -77,7 +77,8 @@ M_ELIGIBLE = 512
 # varies, normalizes per exposure; §OASIS below.)
 EXPOSURE_NORMALIZATION = "none_mean_field_k_reach_constant"
 
-# THE SUSCEPTIBILITY STATISTIC (pre-freeze construction correction, measured on the exact-GW
+# THE SUSCEPTIBILITY STATISTIC (pre-freeze construction correction, measured on the
+# independent-capped-GW
 # positive control BEFORE anything was frozen or run on the ABM — the sanctioned ground-truth
 # calibration phase; plan deviation disclosed in the DECISIONS freeze entry):
 #   chi_resp(s, eps) = CV^2(S) = Var(S; ddof=1) / mean(S)^2 over the M_ELIGIBLE markers.

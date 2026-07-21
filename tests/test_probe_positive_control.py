@@ -1,12 +1,14 @@
 """GW positive control for the probe-recoverability gate (sub-inc-3 T5, @slow, $0).
 
-Exact Galton-Watson substrate: Binomial(K_REACH, p) offspring with p = 2*eps - eps^2 (so the
-known branching m = K_REACH*(2*eps - eps^2) crosses 1 exactly at EPS_CRIT, by that constant's
-own construction), NO collisions, NO censoring; the finite-population role is played by a hard
-size cap at N_AGENTS (the substrate's own ceiling). Ground truth n_gen = the KNOWN m (constant
-across seeds — that is what makes this a positive control).
+Independent capped Galton-Watson substrate: Binomial(K_REACH, p) offspring with
+p = 2*eps - eps^2 (so the known branching m = K_REACH*(2*eps - eps^2) crosses 1 exactly at
+EPS_CRIT, by that constant's own construction), independent trees, NO collisions, NO horizon
+censoring — but a hard terminal size cap at N_AGENTS (the substrate's own ceiling), so this is
+capped GW, not the uncapped ideal. Ground truth n_gen = the KNOWN m (constant across seeds —
+that is what makes this a positive control).
 
-Purpose (design §4): (i) instrument-not-defect — the exact-GW case must PASS the frozen gate, so
+Purpose (design §4): (i) instrument-not-defect — the independent-capped-GW case must PASS the
+frozen gate, so
 an ABM failure is a property of the collision/censor operator, not of the instrument; (ii)
 POWER-CERTIFICATION of the frozen M_ELIGIBLE x N_SEEDS budgets BEFORE any measurement — the
 transform must clear at TOL/2 (margin doctrine) and the locator/seed-consistency must clear at
@@ -64,7 +66,7 @@ def _control_surface():
 @pytest.mark.slow
 def test_gw_positive_control_certifies_gate_and_budgets():
     v = evaluate_recoverability(_control_surface())
-    # (i) the exact-GW case must PASS the frozen locator gate at the frozen budgets.
+    # (i) the independent-capped-GW case must PASS the frozen locator gate at the frozen budgets.
     assert v["status"] == "PASS", v["reasons"]
     assert v["locator"]["seed_consistency"] >= pspec.SEED_CONSISTENCY_MIN
     # The known crossing sits at EPS_CRIT by construction; the peak must bracket it.
@@ -75,5 +77,5 @@ def test_gw_positive_control_certifies_gate_and_budgets():
     assert all(err <= pspec.N_RESP_TOL / 2 for err in v["transform"]["accuracy_err"].values()), \
         v["transform"]["accuracy_err"]
     # (b2) the resolution floor is EVALUABLE at these budgets (its verdict is recorded; the
-    # exact-GW value certifies the noise floor of the estimator itself).
+    # capped-GW value certifies the noise floor of the estimator itself).
     assert v["resolution"]["band_2sd"], "no band points on the control — grid/budget defect"

@@ -17,7 +17,10 @@ did NOT activate (the gate passed); the OASIS accessibility pilot is authorized 
 
 ## 2. Pre-freeze construction correction (disclosed plan deviation; the control doing its job)
 
-The plan's `χ_resp = Var(S)` FAILED the frozen locator on the exact-GW control before anything was
+The plan's `χ_resp = Var(S)` FAILED the frozen locator on the independent-capped-GW control
+(Binomial offspring, independent trees, no collisions/horizon censoring, terminal cap at
+N_AGENTS — wording corrected 2026-07-21 per review: "exact GW" overstated the construction; the
+cap is integral to it) before anything was
 frozen: in a capped system Var(S) peaks at θ(1−θ)·cap², systematically supercritical — measured
 displacement +0.24 in m (12/12 seeds); Fano +0.08. Adopted: **`χ_resp = CV²(S) = Var(S)/S̄²`**,
 pinched at the crossing from both sides (subcritical σ²/(1−m); capped-supercritical (1−θ)/θ) —
@@ -46,7 +49,8 @@ firing), horizon 4000, tagged-native markers, per-tree retention.
   undercount is not a constant offset a calibration could absorb blind — it is regime-dependent,
   largest exactly where H1b's band lives.
 - **(b2) resolution floor — FAIL:** 2·SD_test(n_resp) = 0.1167 at the one band point (floor 0.05).
-- Instrument-not-defect separation: the exact-GW control cleared the same transform at TOL/2, so
+- Instrument-not-defect separation: the independent-capped-GW control cleared the same transform
+  at TOL/2, so
   this failure is a property of the ABM's collision/censoring/finite-population operator — the
   precise content of the owner's n_resp correction, now measured.
 
