@@ -7,6 +7,8 @@
 **Registration target:** OSF
 **Status:** DRAFT — not yet frozen. Once frozen, deviations go only in §10, never by silent edit.
 
+> **Governance notice (2026-07-22) — Global status: DRAFT — never frozen or registered.** The v0.3 freeze fields and selection-rule placeholders were not completed before Stage 1 and Stage 2 results were produced, and no OSF registration or repository freeze tag is recorded. This document therefore **cannot be applied retroactively** to those results. Relative to the global H1–H3 study, past measurements are instrument-development or exploratory evidence. Later local specifications and criteria that were fixed prospectively retain only their documented local scope; they do not repair the missing global freeze. Any future confirmatory test requires a newly completed, prospectively frozen, and registered protocol before its measurement begins. This notice records governance state only: it does not fill a placeholder, alter a hypothesis or criterion, or relabel a past result as a deviation from a frozen protocol.
+
 > Purpose: lock the hypotheses, data source, event definition, estimators, fitting protocol, and decision thresholds *before* seeing results. Pre-registration is the primary defence against the most common failure in self-organized-criticality claims — choosing, post hoc, the cascade definition, kernel, or fitting window that produces the "right" exponent.
 
 ---
