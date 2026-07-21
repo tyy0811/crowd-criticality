@@ -44,22 +44,28 @@ def build_probe_schedule(n_rounds=None):
 
 
 def marker_post_ids(db_path, *, news_user_id=None):
-    """The news user's posts in post_id order = injection order (fail-closed on a count
-    mismatch with the frozen schedule)."""
+    """The news user's posts in post_id order = injection order (fail-closed on a content,
+    count, or observed-round mismatch with the frozen schedule)."""
     if news_user_id is None:
         news_user_id = hs.NEWS_USER_AGENT_ID
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        rows = con.execute("SELECT post_id, content FROM post WHERE user_id=? ORDER BY post_id",
-                           (news_user_id,)).fetchall()
+        rows = con.execute(
+            "SELECT post_id, content, created_at FROM post WHERE user_id=? ORDER BY post_id",
+            (news_user_id,),
+        ).fetchall()
     finally:
         con.close()
     expected = [hs.NEWS_POOL[k] for k in pspec.PILOT_MARKER_POOL_INDICES]
-    if [c for _, c in rows] != expected:
+    expected_rounds = list(pspec.PILOT_INJECTION_ROUNDS)
+    if ([c for _, c, _ in rows] != expected
+            or [created_at for _, _, created_at in rows] != expected_rounds):
         raise ValueError(
-            f"marker posts in DB do not match the frozen schedule (got {len(rows)}, "
-            f"expected {len(expected)} in NEWS_POOL order) — fail-closed")
-    return [pid for pid, _ in rows]
+            "marker posts in DB do not match the frozen schedule "
+            f"(got {len(rows)} posts at rounds "
+            f"{[created_at for _, _, created_at in rows]!r}; expected {len(expected)} in "
+            f"NEWS_POOL order at rounds {expected_rounds!r}) — fail-closed")
+    return [pid for pid, _, _ in rows]
 
 
 def count_exposures(db_path, post_ids):

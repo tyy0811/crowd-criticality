@@ -2,6 +2,8 @@
 resolve_schedule default-path equivalence (the keyword-only extension must be byte-equivalent to
 pre-extension behavior when schedule=None), and the exposure/tree accounting verified against the
 known synthetic DB (the metric-sanity pre-flight analog). The paid pilot run itself is NOT in CI."""
+import sqlite3
+
 import pytest
 
 from critaudit.experiments.probe_pilot_oasis import (
@@ -59,4 +61,25 @@ def test_exposure_and_tree_accounting_on_known_db(tmp_path):
     assert marker_tree_size(db, 5) == 1
     # marker_post_ids fail-closed: the synthetic DB has no news-user markers.
     with pytest.raises(ValueError, match="fail-closed"):
+        marker_post_ids(db)
+
+
+def test_marker_posts_fail_closed_on_wrong_database_round(tmp_path):
+    """The banked round labels must be observed in the DB, not copied from the frozen constants."""
+    db = str(tmp_path / "oasis.db")
+    _build_synthetic_oasis_db(db)
+    con = sqlite3.connect(db)
+    try:
+        for k, expected_round in enumerate(pspec.PILOT_INJECTION_ROUNDS):
+            actual_round = expected_round + 1 if k == 0 else expected_round
+            con.execute(
+                "INSERT INTO post(post_id,user_id,original_post_id,content,quote_content,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (10 + k, hs.NEWS_USER_AGENT_ID, None, hs.NEWS_POOL[k], None, actual_round),
+            )
+        con.commit()
+    finally:
+        con.close()
+
+    with pytest.raises(ValueError, match="frozen schedule"):
         marker_post_ids(db)
