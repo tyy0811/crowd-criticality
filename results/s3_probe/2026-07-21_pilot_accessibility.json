@@ -1,0 +1,57 @@
+{
+ "artifact": "pilot_accessibility",
+ "authorization": "owner 2026-07-21: locator-PASS-alone; responses DESCRIPTIVE only \u2014 no OASIS-transfer, regime, H1b, or line-189 independence claim",
+ "caveats": "finite-memory-horizon + exposure-volume (inherited from the harness); all response values are DESCRIPTIVE",
+ "design": "docs/superpowers/specs/2026-07-20-probe-recoverability-subinc3-design.md",
+ "design_sha256": "d0a35334d73b7424f5fce01d5f78abc861cd5e30b6caf592f588eea4c9508c40",
+ "markers": [
+  {
+   "exposures": 22,
+   "marker_index": 0,
+   "post_id": 36,
+   "response_per_exposure": 0.045454545454545456,
+   "round_submitted": 2,
+   "tree_size": 2
+  },
+  {
+   "exposures": 23,
+   "marker_index": 1,
+   "post_id": 38,
+   "response_per_exposure": 0.17391304347826086,
+   "round_submitted": 4,
+   "tree_size": 5
+  },
+  {
+   "exposures": 11,
+   "marker_index": 2,
+   "post_id": 49,
+   "response_per_exposure": 0.0,
+   "round_submitted": 6,
+   "tree_size": 1
+  },
+  {
+   "exposures": 4,
+   "marker_index": 3,
+   "post_id": 122,
+   "response_per_exposure": 0.0,
+   "round_submitted": 8,
+   "tree_size": 1
+  },
+  {
+   "exposures": 6,
+   "marker_index": 4,
+   "post_id": 194,
+   "response_per_exposure": 0.0,
+   "round_submitted": 10,
+   "tree_size": 1
+  }
+ ],
+ "n_events_exported": 804,
+ "n_markers_exposed": 5,
+ "status": "ACCESSIBLE",
+ "thresholds": {
+  "min_exposed_markers": 4,
+  "min_total_exposures": 10
+ },
+ "total_marker_exposures": 66
+}
