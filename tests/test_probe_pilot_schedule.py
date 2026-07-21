@@ -9,7 +9,11 @@ from critaudit.experiments.probe_pilot_oasis import (
 from critaudit.sim.controls import probe_spec as pspec
 from critaudit.sim.harness import harness_spec as hs
 from critaudit.sim.harness.oasis_adapter import build_news_schedule, resolve_schedule
-from tests.test_harness_export import _build_synthetic_oasis_db
+# Sibling test module imported TOP-LEVEL (no `tests.` prefix): pytest's prepend import-mode puts
+# tests/ itself on sys.path in every invocation, whereas the `tests.` package form only resolved
+# locally by the accident of `python -m pytest` from the repo root (CI runs bare `pytest` — the
+# PR #11 collection failure, 2026-07-21).
+from test_harness_export import _build_synthetic_oasis_db
 
 
 def test_probe_schedule_deterministic_and_frozen():
