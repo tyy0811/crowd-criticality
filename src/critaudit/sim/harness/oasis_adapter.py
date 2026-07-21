@@ -531,7 +531,27 @@ async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_pat
             f"loud-400 guard (final): {model.rejections} server rejection(s) over the run")
 
 
-def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
+def resolve_schedule(seed, operating_point, schedule):
+    """The run's injection schedule (sub-inc-3 pilot extension, T10). `None` -> the frozen
+    Bernoulli news path via build_news_schedule, BYTE-EQUIVALENT to the pre-extension behavior
+    (default-path equivalence is test-pinned). An explicit list is used verbatim (the pilot's
+    deterministic markers) after fail-closed validation: length must equal n_rounds and every
+    entry must be None or a str."""
+    if schedule is None:
+        return build_news_schedule(
+            seed, n_rounds=operating_point["n_rounds"], news_rate=operating_point["news_rate"])
+    schedule = list(schedule)
+    if len(schedule) != int(operating_point["n_rounds"]):
+        raise ValueError(
+            f"explicit schedule length {len(schedule)} != n_rounds "
+            f"{operating_point['n_rounds']} (fail-closed)")
+    for r, entry in enumerate(schedule):
+        if entry is not None and not isinstance(entry, str):
+            raise ValueError(f"schedule[{r}] is neither None nor str (fail-closed)")
+    return schedule
+
+
+def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token, *, schedule=None):
     """OASIS-config integration (plan Task 10): build the frozen crowd at `operating_point`, run it
     through the OpenAI-compatible `endpoint_url` model `model_id`, and return
     (db_path, token_counts). All construction is dictated by the FROZEN rules in harness_spec +
@@ -555,8 +575,7 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token):
 
     edges = build_follow_edges(
         seed, n_agents=operating_point["n_agents"], density=operating_point["network_density"])
-    schedule = build_news_schedule(
-        seed, n_rounds=operating_point["n_rounds"], news_rate=operating_point["news_rate"])
+    schedule = resolve_schedule(seed, operating_point, schedule)
 
     asyncio.run(_run_oasis_minimal_async(
         operating_point=operating_point, model=model, news_model=news_model, db_path=db_path,
