@@ -1,5 +1,7 @@
 # Fragment-salvage GoF — survivors of the frozen screen (2026-06-25 20:11:53)
 
+> **Repository archive status: retrospective (2026-07-22).** This file remained uncommitted until the Stage 1 closeout archive. Its dated text preserves the operator's stated chronology but is not independent git-visible evidence of that ordering; see the final report's provenance notice.
+
 Gap-guarded GoF (eps=0.4, c=0.5, B=199, p_flag=0.1) on each screen-survivor's FROZEN largest
 fragment (rule: results/s0.4_feasibility/2026-06-25_fragment_salvage_rule.md). Same cert as the locked
 0/3, so verdicts are comparable. Necessary-condition screen passed; this is the sufficient test.

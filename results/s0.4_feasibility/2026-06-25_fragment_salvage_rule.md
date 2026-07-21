@@ -1,5 +1,7 @@
 # Fragment-salvage screen — FROZEN result-blind rule (recorded BEFORE the screen runs)
 
+> **Repository archive status: retrospective (2026-07-22).** This file remained uncommitted until the Stage 1 closeout archive. Its dated text preserves the operator's stated chronology but is not independent git-visible evidence of that ordering; see the final report's provenance notice.
+
 **Date:** 2026-06-25 · **Status:** frozen result-blind ahead of any measurement; this file is written and
 recorded *before* the screen sees per-market fragment counts. The rule below is fixed; it is not adjusted
 after seeing which markets survive.

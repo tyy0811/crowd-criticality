@@ -1,5 +1,7 @@
 # Dual-capture merge — FROZEN result-blind rule (recorded BEFORE the merged cohort is seen)
 
+> **Repository archive status: retrospective (2026-07-22).** This file remained uncommitted until the Stage 1 closeout archive. Its dated text preserves the operator's stated chronology but is not independent git-visible evidence of that ordering; see the final report's provenance notice.
+
 **Date:** 2026-06-25 · **Status:** frozen result-blind ahead of measurement. Written before the merged
 over-floor cohort is computed; the rule is not adjusted after seeing which markets clear.
 

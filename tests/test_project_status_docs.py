@@ -58,3 +58,17 @@ def test_stage1_fallback_archive_is_explicitly_retrospective():
     assert "Repository archive status: retrospective" in report
     assert "does not provide git-visible freeze-before-measure evidence" in report
     assert "No trustworthy per-market `n` is banked" in report
+
+
+def test_each_stage1_supporting_record_discloses_retrospective_archival():
+    supporting_records = (
+        "results/s0.4_feasibility/2026-06-25_dual_capture_merge_rule.md",
+        "results/s0.4_feasibility/2026-06-25_fragment_salvage_gof.md",
+        "results/s0.4_feasibility/2026-06-25_fragment_salvage_rule.md",
+        "results/s0.4_feasibility/2026-06-26_dual_capture_gof_1128_1197.md",
+        "results/s0.4_feasibility/2026-06-26_dual_capture_gof_7223_0340_0001_9698.md",
+    )
+
+    for relative_path in supporting_records:
+        record = _read(relative_path)
+        assert "Repository archive status: retrospective" in record, relative_path
