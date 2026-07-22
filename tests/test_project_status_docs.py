@@ -55,6 +55,22 @@ def test_plan_records_the_conditional_causal_probe_ratification():
     assert "does not" in design and "H1b" in design
 
 
+def test_causal_probe_sampling_frame_amendment_is_ratified():
+    plan = _read("IMPLEMENTATION_PLAN.md")
+    design = _read("results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md")
+    decisions = _read("DECISIONS.md")
+
+    for record in (plan, design, decisions):
+        assert "SamplingFrame" in record
+        assert "StratumDraw" in record
+        assert "estimated_diagonal_variance_bound" in record
+
+    assert "fixed parent denominator" in design
+    assert "exact-selector coverage" in design
+    assert "dynamic or adaptive OASIS frame is not authorized" in design
+    assert "Task 8 owner stop remains binding" in design
+
+
 def test_plan_does_not_gate_development_on_external_prerequisites():
     plan = _read("IMPLEMENTATION_PLAN.md")
     instrument_design = _read(

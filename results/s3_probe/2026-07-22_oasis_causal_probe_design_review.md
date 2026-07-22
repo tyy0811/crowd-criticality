@@ -140,3 +140,31 @@ After an executable spec and implementation plan are separately approved, sequen
 **Not ratified:** equivalence to Hawkes `n`; H1b activation; LLM-side recoverability; any threshold not explicitly fixed above; any scientific run; any spend.
 
 **Standing fail branch:** Branch B remains frozen and activates mechanically when a scientific gate fails.
+
+## 11. Owner-ratified sampling-frame amendment
+
+**Ratified 2026-07-22, before further Task-2 implementation.** This section supersedes only the earlier Task-2 assumption that the parent denominator could be reconstructed from observed assignments and that selected candidate pairs could use an independent-pair variance calculation. Sections 1–10 otherwise retain their scope and authorization boundaries.
+
+### Fixed design substrate
+
+The estimator consumes an explicit immutable `SamplingFrame`, fixed and serialized before the first causal assignment draw. During Tasks 1–7 this is a scripted or fixture frame. A dynamic or adaptive OASIS frame is not authorized by this amendment; future OASIS scientific use requires either a separately ratified sequential-inference construction or a genuinely fixed pre-run frame.
+
+Every frame has a unique frame ID, a complete fixed parent registry, and every eligible candidate pair. Each pair has a unique pair ID, parent ID, agent ID, round ID, selection-stratum ID, marginal selection probability, and conditional treatment probability. Selection strata map one-to-one to agent-rounds. Probabilities within a stratum sum to at most one, every inferential pair has positive inclusion probability, and the treatment probability is exactly the frozen `0.5`.
+
+Exactly one immutable `StratumDraw` is logged for every frame stratum. It records either the selected pair ID or explicit `None`, distinguishing a genuine no-selection draw from a dropped record. Every selected draw has exactly one assignment and one outcome; unselected pairs have neither. Assignments and outcomes are validated against the complete frame.
+
+### Estimator and uncertainty contract
+
+The fixed parent denominator and candidate-pair count come from the complete `SamplingFrame`, never from realized assignments. The point estimate remains the full-frame parent-mean Horvitz–Thompson total with pair inclusion probability
+
+`pi = selection_probability * treatment_probability`.
+
+At-most-one categorical selection creates non-positive within-stratum covariance for fixed nonnegative binary potential responses. Consequently, the observed diagonal Horvitz–Thompson variance estimator is an unbiased estimator of a conservative variance-bound quantity, not a guaranteed upper bound in every realization. The public field is therefore `estimated_diagonal_variance_bound`; it yields `standard_error_conservative` and an approximate, untruncated Wald interval. The interval status remains `design_only`. Zero observed response does not itself certify zero uncertainty.
+
+Task 7 must also record a deterministic worst-case variance bound under binary `Y <= 1`. Before any interval is activated, Task 7 must simulate the exact categorical selector and demonstrate prospective **exact-selector coverage** and width under the frozen frame and support surface.
+
+### Fail-closed validation and retained stop
+
+Runtime validation fails closed on non-record inputs; non-boolean flags; non-finite, non-integral, or invalid IDs/counts/rounds as applicable; invalid probabilities; treatment probability other than exactly `0.5`; a parent equal to its filler; duplicate native child IDs; or child-author identity that differs from the assigned agent. Frame, draw, assignment, outcome, feed-isolation, and native-parent relationships must all agree before estimation.
+
+Branch B remains the mechanical fail branch. H1b remains blocked, `R_reply` is not equated to Hawkes `n`, no scientific run is authorized, and the **Task 8 owner stop remains binding**.
