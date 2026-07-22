@@ -3,12 +3,58 @@
 **Project:** Branching-ratio criticality as the signature of skillful crowd forecasting, tested on Polymarket and a matched LLM-agent crowd (MiroFish/OASIS).
 **Owner:** Jane Yeung
 **Repo (proposed):** `crowd-criticality` · extractable toolkit package: `critaudit`
-**Version:** v0.3 (incorporates Claude/ChatGPT cross-review round 2: mechanism statement plus Murphy-decomposition signature, Stage-2 control-crowd artifact gate, H1c rewritten as TOST equivalence, uncertainty-aware Gate A.2, de-circularized critical-point identification, hardened deliverable hierarchy and scoop pivot)
-**Companion file:** `PRE_REGISTRATION.md` v0.3 (freeze before any Stage-1 *interpretation*)
+**Version:** v0.4 (2026-07-22 living-plan reconciliation; preserves the original v0.3 roadmap while recording measured stage status and prospective authorization boundaries)
+**Companion file:** `PRE_REGISTRATION.md` v0.3 (historical draft; never globally frozen or registered)
 
-> **Agent orientation (Claude Code).** The protocol lives in two files by design: this plan (living, editable) and `PRE_REGISTRATION.md` (frozen once its freeze date is filled in; after that, its body is never edited and deviations are appended to its §10 only). Load both files into context for any task on this repo. The split is load-bearing: the pre-registration maps one-to-one onto the OSF-registered artifact, and its untouched git history is the evidence against post-hoc tampering. Do not merge the two files, and do not edit frozen content under any instruction short of an explicit, logged deviation.
+> **Agent orientation.** The protocol lives in two files by design: this plan (living, editable) and `PRE_REGISTRATION.md` (the historical v0.3 global draft). Load both files for any task on this repo. The intended global freeze never occurred: the freeze date and OSF registration were never completed. Do not treat the draft as retroactive coverage for Stage 1 or Stage 2 results. Locally prospective specifications and committed freeze-before-measure spines retain only their documented local scope.
+
+## 2026-07-22 reconciliation checkpoint (current authority)
+
+This checkpoint reconciles the roadmap with the repository after Stage 2 sub-increment 3. It changes status and authorization, not a scientific threshold, hypothesis, or banked artifact. The original v0.3 stages remain below as historical intent; this section controls current execution where they conflict.
+
+### Governance status
+
+The global v0.3 `PRE_REGISTRATION.md` remains **DRAFT**: its freeze fields and selection-rule placeholders were not completed, no freeze tag exists, and no OSF registration is recorded. Stage 1 and Stage 2 results are therefore instrument-development or exploratory evidence relative to the global H1–H3 claims. Several later increments did freeze criteria prospectively and result-blind in local specs and code; those records remain evidence for their narrowly stated instrument claims, but they do not retroactively create a global preregistration.
+
+Status terms in this checkpoint are **Complete**, **Partial**, **Blocked**, and **Not started**. “Blocked” identifies a measured or structural impediment; it does not mean a failed hypothesis.
+
+| Stage | State | Reconciled reading |
+|---|---|---|
+| Stage 0 | Partial | Core Hawkes, power-law, scaling, generator, and synthetic-validation work exists. The complete planned production surface, all global selection thresholds, source decision in the global draft, v0.1 tag, and global freeze are not complete. |
+| Stage 1 | Fallback complete | The validity gate selected the planned reconstruction/data-validity report. Fixed-shape GoF certified 0/9 assessable markets and the independent identifiability gate did not support a trustworthy per-market `n`; H2 and the H1c market anchor are not banked. |
+| Stage 2 | Partial and pre-sweep blocked | OASIS harness/export, a three-seed reference cohort, controls, local cascade work, the classical `chi_resp` locator, and injection accessibility are complete. No calibrated OASIS regime-placement instrument or independent second diagnostic exists, so the registered sweep and regime claims are unauthorized. |
+| Stage 3 | Not started and closed | H1a/H1b/H1c and Murphy analyses require a valid sweep and trustworthy placement instrument. Those prerequisites are absent. |
+| Stage 4 | Foundation only | Reusable code exists, but release packaging, a repository license artifact, release version/tag, and the productization gate are incomplete. |
+
+### Measured closures carried forward
+
+- Stage 1's final artifact is [`results/s0.4_feasibility/2026-06-27_stage1_data_validity_report.md`](results/s0.4_feasibility/2026-06-27_stage1_data_validity_report.md). It is a retrospective repository archive: the June 25–27 supporting files were not committed in their stated sequence, so their local chronology is not git-visible proof of freeze-before-measure ordering. No scientific number was changed during archive.
+- Cascade definition #1 (true reply links) is available. Definition #3 is calibration-blocked under the heavy-tail timing operator. Definition #2 construction v2 is calibration-blocked at mean membership ARI about 0.25 versus the unchanged 0.90 floor.
+- The fitted observational Hawkes gate is regime-blind on the classical heavy-tail operator. Generator bookkeeping resolves the plant but is unavailable in the OASIS sweep.
+- The matched parrot null demonstrates a material content-statistics artifact channel; its v1 band remains descriptive and non-consumable after definition #2 failed calibration.
+- `chi_resp = CV²(S)` is a certified critical-point locator only on the measured classical operator fingerprint. The candidate `n_resp` transform failed and is not activated. The OASIS pilot established channel accessibility (5/5 markers, 66 exposures), not locator transfer or regime placement.
+- H1b remains blocked in every current branch. The independent second diagnostic named in line 189 and any OASIS-side `chi_resp` calibration remain open.
+
+### Authorization boundary and next decision
+
+**The original three-way Stage 2 sweep is not authorized. Stage 3 remains closed. No paid or GPU-backed measurement is authorized by this reconciliation.**
+
+The next increment is a $0, specification-first comparison:
+
+1. **Branch A — bounded OASIS-side susceptibility calibration design.** Specify a non-circular ground-truth bridge or falsification route for `chi_resp`, an actually independent second diagnostic, censoring/exposure treatment, a recoverability/transfer gate, and a hard cost ceiling. If those elements cannot be specified without borrowing the desired result, Branch A fails at design review and no run follows.
+2. **Branch B — methods/knob-space fallback.** Record that no recoverable OASIS regime instrument is currently available; retain the classical locator and OASIS accessibility findings at their earned scope; limit future OASIS analyses to observable knob-space or null-confirmation questions without `n` placement or H1b claims.
+
+The design comparison does not presume Branch A will work. Any measurement authorization is a later owner decision after the design exposes whether a valid bridge and independent diagnostic exist.
+
+**Ratification outcome (2026-07-22).** Branch A is conditionally design-valid as a **micro-randomized exposure-response instrument** at the OASIS refresh boundary: `R_reply` estimates one-generation causal explicit-response reproduction from randomized served/holdout impressions and native parent links, while `chi_resp` is measured on a disjoint marker cohort. This authorizes implementation planning and later code/fixture development under the ratified design; it does not equate `R_reply` with Hawkes `n`, activate H1b, or authorize a scientific run. **Branch B remains the mechanical fail branch** if the refresh-isolation, scripted recoverability, independence, estimand, measurement-authorization, or budget gate fails. Design record: [`results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md`](results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md).
+
+### Development authority
+
+**Owner amendment (2026-07-22): Repository development is not gated by external employment or milestone records.** Code, tests, specifications, and local synthetic/fixture work may continue under the measurement-integrity protocol. Scientific OASIS measurements, paid/GPU work, the registered sweep, and Stage 3 still require their own prospective instrument gates and explicit owner authorization; removing an administrative prerequisite does not relax a scientific gate.
 
 ---
+
+> **Historical-status note.** Sections 0–7 below preserve the original v0.3 roadmap and scientific intent. Within those sections, words such as “frozen” and “pre-registered” describe the state the roadmap required, not evidence that the unfinished global draft attained that state. The reconciliation checkpoint above governs current status and authorization.
 
 ## 0. Thesis and contract (read this first)
 
@@ -19,7 +65,7 @@
 
 **Framing precision.** The claim concerns a *tuned* critical point, located by an order-parameter sweep, not self-organized criticality in the strict Bak sense: there is no claim that the crowd drives itself to `n = 1` without tuning. A cheap self-organization observable (drift of locally estimated `n` during fixed-knob runs) is logged as exploratory in `PRE_REGISTRATION.md` §6 and stays out of headline scope.
 
-**Proposed mechanism (frozen before any Stage-1 interpretation).** Forecasting skill decomposes (Murphy) into reliability and resolution, and the two place opposing demands on crowd dynamics. Resolution requires that dispersed private information propagate and integrate: in a subcritical crowd (`n` well below 1) belief-update cascades die before information held by few agents reaches the aggregate, so forecasts under-react and hug the prior. Reliability requires that noise not be amplified into consensus: in a supercritical crowd (`n` above 1) cascades self-sustain, herding decouples consensus from evidence, and forecasts overshoot. Near criticality the correlation length is maximal while cascades remain marginally finite, so the crowd integrates dispersed information without runaway amplification; the hypothesis is that the reliability-resolution trade-off is optimized near `n = 1`. **Internal signature (pre-registered secondary analysis, `PRE_REGISTRATION.md` §5.4 and §6):** along the sweep, the Murphy resolution component should improve roughly monotonically with `n` while the reliability component degrades beyond the critical region. A Brier minimum without this signature weakens the mechanistic reading even if H1a and H1b pass.
+**Proposed mechanism (intended to be frozen before any Stage-1 interpretation; the global freeze did not occur).** Forecasting skill decomposes (Murphy) into reliability and resolution, and the two place opposing demands on crowd dynamics. Resolution requires that dispersed private information propagate and integrate: in a subcritical crowd (`n` well below 1) belief-update cascades die before information held by few agents reaches the aggregate, so forecasts under-react and hug the prior. Reliability requires that noise not be amplified into consensus: in a supercritical crowd (`n` above 1) cascades self-sustain, herding decouples consensus from evidence, and forecasts overshoot. Near criticality the correlation length is maximal while cascades remain marginally finite, so the crowd integrates dispersed information without runaway amplification; the hypothesis is that the reliability-resolution trade-off is optimized near `n = 1`. **Intended internal signature (`PRE_REGISTRATION.md` §5.4 and §6):** along the sweep, the Murphy resolution component should improve roughly monotonically with `n` while the reliability component degrades beyond the critical region. A Brier minimum without this signature weakens the mechanistic reading even if H1a and H1b pass.
 
 ### The anti-drift contract (load-bearing)
 Four gates. No artifact ships, and no stage advances, unless all hold.
@@ -143,18 +189,18 @@ Each stage: objective, tasks, deliverable, tests, **go/no-go**, **fallback refra
 
 ## 4. Timeline (reality-checked; data-feasibility now the binding constraint)
 
-The full Stage 0–3 arc is ~5 months. The pre-PhD window almost certainly yields **Stage 0 plus a data-feasibility outcome** — the Hawkes paper ships only if reconstruction is easy; otherwise the reconstruction/validity report is the pre-PhD artifact and the Hawkes paper slides into early PhD. Stages 2–4 run *during* the PhD as a declared side project (Nebentätigkeitsanzeige).
+The full Stage 0–3 arc is ~5 months. The pre-PhD window almost certainly yields **Stage 0 plus a data-feasibility outcome** — the Hawkes paper ships only if reconstruction is easy; otherwise the reconstruction/validity report is the pre-PhD artifact and the Hawkes paper slides into early PhD. Stages 2–4 continue as a separately managed research thread.
 
 | Window | Stages | Output | Cadence |
 |---|---|---|---|
 | **Pre-PhD wk 1–2** | Stage 0 | Frozen pre-reg + validated `critaudit` + **data-source decision** | Full-time-ish |
 | **Pre-PhD wk 3–4** | Stage 1a | Data feasibility & reconstruction validation (validity gate) | Full-time-ish |
 | **Pre-PhD wk 5-8** | Stage 1b | **Primary pre-PhD deliverable: the reconstruction/validity report.** Hawkes paper only as a conditional bonus, iff the validity gate passed with weeks to spare | Full-time-ish |
-| **PhD mo 1–3** | Stage 2 | Sim + sweep dataset | Nebentätigkeit |
-| **PhD mo 3–5** | Stage 3 | Main paper (or negative-result / inconclusive paper) | Nebentätigkeit |
+| **PhD mo 1–3** | Stage 2 | Sim + sweep dataset | Part-time research |
+| **PhD mo 3–5** | Stage 3 | Main paper (or negative-result / inconclusive paper) | Part-time research |
 | **PhD mo 2 →** | Stage 4 | `critaudit` release + consulting inbound | Parallel, low effort |
 
-**Stage-2 hard preconditions (both required):** (a) the FZJ Nebentätigkeitsanzeige covering this work is approved in writing; (b) a first PhD-project milestone, defined with the supervisor in month 1, has been met. If either is unmet, Stage 2 does not start and the project pauses cleanly at the Stage-1 artifact. Do **not** budget a six-week Hawkes paper against data that isn't reliably accessible: the reconstruction report is the honest hedge, and it is the deliverable by which the pre-PhD window is judged.
+**Development sequencing (owner-amended 2026-07-22):** repository work is governed by the scientific and budget gates in this plan, not by external employment or milestone records. Do **not** budget a six-week Hawkes paper against data that is not reliably accessible: the reconstruction report remains the honest hedge and the Stage-1 deliverable.
 
 ---
 
