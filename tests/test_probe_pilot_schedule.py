@@ -64,6 +64,88 @@ def test_exposure_and_tree_accounting_on_known_db(tmp_path):
         marker_post_ids(db)
 
 
+# --- Task 4: run_oasis_minimal fixed-frame causal hooks (fast; no OASIS import) ---------------
+# The hooks must stay inert by default and fail closed BEFORE any model/platform work.
+
+def _hook_frame(frame_id="frame:hooks"):
+    from critaudit.sim.harness.causal_probe_records import (
+        CandidatePair, ParentEligibility, SamplingFrame)
+    return SamplingFrame(
+        frame_id=frame_id,
+        parent_records=(
+            ParentEligibility("post:1", author_agent_id=10, created_round=0),
+            ParentEligibility("post:2", author_agent_id=11, created_round=0),
+        ),
+        excluded_recipient_agent_ids=(10, 11, 99),
+        candidate_pairs=(
+            CandidatePair(
+                pair_id="pair:1", parent_item_id="post:1", agent_id=20, round_id=1,
+                stratum_id="agent:20:round:1", selection_probability=0.4,
+                treatment_probability=0.5, parent_first_readable_round=1,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+            CandidatePair(
+                pair_id="pair:2", parent_item_id="post:2", agent_id=20, round_id=1,
+                stratum_id="agent:20:round:1", selection_probability=0.4,
+                treatment_probability=0.5, parent_first_readable_round=1,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+        ),
+    )
+
+
+def _hook_controller(frame):
+    from critaudit.sim.harness.causal_refresh import CausalRefreshController
+
+    class _Stream:
+        def random(self):
+            return 0.99
+
+    return CausalRefreshController(
+        frame, _Stream(), _Stream(),
+        parent_posts={"post:1": {"post_id": 1, "user_id": 10},
+                      "post:2": {"post_id": 2, "user_id": 11}},
+        filler_posts={"post:1": {"post_id": 3, "user_id": 12},
+                      "post:2": {"post_id": 4, "user_id": 12}},
+    )
+
+
+def test_run_oasis_minimal_causal_hooks_default_inert():
+    import inspect
+    from critaudit.sim.harness.oasis_adapter import run_oasis_minimal
+    parameters = inspect.signature(run_oasis_minimal).parameters
+    for name in ("causal_frame", "causal_controller"):
+        assert name in parameters
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is None
+
+
+def test_causal_hooks_must_be_supplied_together():
+    from critaudit.sim.harness.oasis_adapter import run_oasis_minimal
+    frame = _hook_frame()
+    with pytest.raises(ValueError, match="together"):
+        run_oasis_minimal(1, hs.OPERATING_POINT, "m", "http://invalid", "t",
+                          causal_frame=frame)
+    with pytest.raises(ValueError, match="together"):
+        run_oasis_minimal(1, hs.OPERATING_POINT, "m", "http://invalid", "t",
+                          causal_controller=_hook_controller(frame))
+
+
+def test_causal_hooks_reject_non_identical_frame():
+    from critaudit.sim.harness.oasis_adapter import run_oasis_minimal
+    controller = _hook_controller(_hook_frame("frame:other"))
+    with pytest.raises(ValueError, match="byte-identical"):
+        run_oasis_minimal(1, hs.OPERATING_POINT, "m", "http://invalid", "t",
+                          causal_frame=_hook_frame(), causal_controller=controller)
+
+
+def test_causal_hooks_fail_closed_without_predraw_database(monkeypatch, tmp_path):
+    from critaudit.sim.harness.oasis_adapter import run_oasis_minimal
+    monkeypatch.setenv("HARNESS_COHORT_DIR", str(tmp_path))
+    frame = _hook_frame()
+    with pytest.raises(ValueError, match="database|trace"):
+        run_oasis_minimal(1, hs.OPERATING_POINT, "m", "http://invalid", "t",
+                          causal_frame=frame, causal_controller=_hook_controller(frame))
+
+
 def test_marker_posts_fail_closed_on_wrong_database_round(tmp_path):
     """The banked round labels must be observed in the DB, not copied from the frozen constants."""
     db = str(tmp_path / "oasis.db")

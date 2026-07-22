@@ -32,6 +32,7 @@ __all__ = (
     "PROBE_RNG_STREAM_TREATMENT",
     "ServiceRecord",
     "CausalRefreshController",
+    "apply_causal_refresh",
     "build_probe_rngs",
     "post_item_id",
     "wrap_background_refresh",
@@ -288,6 +289,55 @@ class CausalRefreshController:
             )
         )
         return feed
+
+
+async def apply_causal_refresh(base_refresh, platform, controller, agent_id):
+    """Realize the fixed-frame intervention at an OASIS Platform's refresh boundary.
+
+    Delegates ordinary refresh construction to ``base_refresh`` (the platform's own
+    refresh), applies the controller before the posts reach prompt conversion, and
+    re-records the refresh trace so its served IDs always equal the returned feed.
+    Duck-typed on the Platform surface (``sandbox_clock``, ``pl_utils``) so this
+    module never imports OASIS; safe here because ``Platform.running`` awaits each
+    action inline (no concurrent refreshes on one platform instance).
+    """
+    round_id = int(platform.sandbox_clock.time_step)
+    if controller is None or not controller.has_stratum(agent_id, round_id):
+        return await base_refresh(agent_id)
+
+    utils = platform.pl_utils
+    had_instance_record = "_record_trace" in utils.__dict__
+    original_record = utils._record_trace
+    captured = []
+
+    def _capture(user_id, action_type, action_info, current_time=None):
+        captured.append((user_id, action_type, action_info))
+
+    utils._record_trace = _capture
+    try:
+        result = await base_refresh(agent_id)
+    finally:
+        if had_instance_record:
+            utils._record_trace = original_record
+        else:
+            del utils._record_trace
+
+    if not (isinstance(result, dict) and result.get("success") is True and "posts" in result):
+        raise RuntimeError(
+            f"registered stratum (agent {agent_id}, round {round_id}) background "
+            f"refresh failed: {result!r}"
+        )
+    feed = controller.refresh(agent_id, round_id, tuple(result["posts"]))
+    refresh_traces = [row for row in captured if row[1] == "refresh"]
+    if len(refresh_traces) != 1:
+        raise RuntimeError(
+            "expected exactly one background refresh trace record (fail-closed)"
+        )
+    user_id, action_type, action_info = refresh_traces[0]
+    final_info = dict(action_info)
+    final_info["posts"] = list(feed)
+    original_record(user_id, action_type, final_info)
+    return {"success": True, "posts": list(feed)}
 
 
 def wrap_background_refresh(
