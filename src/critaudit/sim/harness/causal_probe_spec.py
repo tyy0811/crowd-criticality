@@ -30,14 +30,10 @@ ESTIMAND_NAME = "R_reply"
 
 REQUIRED_ASSIGNMENT_FIELDS = (
     "assignment_id",
-    "round_id",
-    "agent_id",
-    "parent_item_id",
+    "frame_id",
+    "pair_id",
     "filler_item_id",
-    "selection_probability",
-    "treatment_probability",
     "treated",
-    "parent_first_readable_round",
 )
 
 REQUIRED_GATE_FIELDS = (

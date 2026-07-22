@@ -54,14 +54,10 @@ def test_required_assignment_fields_are_an_exact_immutable_tuple():
     assert type(spec.REQUIRED_ASSIGNMENT_FIELDS) is tuple
     assert spec.REQUIRED_ASSIGNMENT_FIELDS == (
         "assignment_id",
-        "round_id",
-        "agent_id",
-        "parent_item_id",
+        "frame_id",
+        "pair_id",
         "filler_item_id",
-        "selection_probability",
-        "treatment_probability",
         "treated",
-        "parent_first_readable_round",
     )
 
 
