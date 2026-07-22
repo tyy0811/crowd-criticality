@@ -261,6 +261,37 @@ def test_require_disjoint_seed_sets():
         require_disjoint_seed_sets((1, 2), (3, 4), (4, 5))
 
 
+def test_frozen_seed_registries_are_pairwise_disjoint():
+    from critaudit.experiments.causal_probe_power import (
+        POWER_SCHEDULE_SEEDS,
+        RECOVERABILITY_SEEDS,
+    )
+    require_disjoint_seed_sets(POWER_SCHEDULE_SEEDS, RECOVERABILITY_SEEDS, MARKER_SEEDS)
+
+
+def test_power_simulation_never_inspects_held_out_schedules():
+    """The power calculation's simulation surface may not reference the held-out
+    recoverability or marker seed registries."""
+    path = os.path.join(_REPO, "src/critaudit/experiments/causal_probe_power.py")
+    with open(path) as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    simulation_functions = {
+        "build_power_frame", "build_power_schedule",
+        "simulate_fixed_schedule", "simulate_power_grid",
+    }
+    seen = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in simulation_functions:
+            seen.add(node.name)
+            names = {
+                inner.id for inner in ast.walk(node) if isinstance(inner, ast.Name)
+            }
+            forbidden = names & {"RECOVERABILITY_SEEDS", "MARKER_SEEDS"}
+            assert not forbidden, \
+                f"{node.name} inspects held-out registries {sorted(forbidden)}"
+    assert seen == simulation_functions
+
+
 # --- known violators ---------------------------------------------------------------------------
 
 

@@ -1,6 +1,11 @@
 """Frozen executable vocabulary for the OASIS causal-probe design."""
 
+import hashlib
+import os
+
 from critaudit.sim.harness import causal_probe_spec as spec
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def test_registered_causal_probe_concepts_are_frozen():
@@ -47,7 +52,24 @@ def test_exact_public_surface_is_frozen():
         "REQUIRED_ASSIGNMENT_FIELDS",
         "REQUIRED_GATE_FIELDS",
         "BRANCH_B_TEXT",
+        "SELECTED_SUPPORT",
+        "POWER_ARTIFACT_PATH",
+        "POWER_ARTIFACT_SHA256",
     )
+
+
+def test_power_freeze_matches_the_banked_artifact():
+    """Task 7A Step 6: the selected support and artifact hash are frozen in the spec
+    and must reproduce byte-for-byte from the committed artifact."""
+    assert spec.SELECTED_SUPPORT == {"parent_count": 8192, "recipients_per_parent": 4}
+    assert spec.POWER_ARTIFACT_PATH == (
+        "results/s4_causal_probe/2026-07-22_power_calculation.json")
+    artifact_path = os.path.join(_REPO, spec.POWER_ARTIFACT_PATH)
+    with open(artifact_path, "rb") as handle:
+        digest = hashlib.sha256(handle.read()).hexdigest()
+    assert digest == spec.POWER_ARTIFACT_SHA256
+    assert spec.POWER_ARTIFACT_SHA256 == (
+        "7e7086f8ca8bb868b6240c602848ec5c15ccd6c32681d3182d90bdf5c23596fb")
 
 
 def test_required_assignment_fields_are_an_exact_immutable_tuple():
