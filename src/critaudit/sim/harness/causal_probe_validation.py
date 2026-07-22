@@ -58,7 +58,7 @@ def _require_bool(value: object, name: str) -> None:
 def _require_probability(value: object, name: str) -> None:
     if type(value) not in (int, float):
         raise TypeError(f"{name} must be a real number")
-    if not math.isfinite(value) or not 0 < value <= 1:
+    if not 0 < value <= 1 or not math.isfinite(value):
         raise ValueError(f"{name} must be finite and in (0, 1]")
 
 

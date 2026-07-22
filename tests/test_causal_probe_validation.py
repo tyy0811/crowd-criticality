@@ -298,13 +298,19 @@ def test_sampling_frame_requires_exact_opportunity_boolean() -> None:
         )
 
 
-@pytest.mark.parametrize("value", [0.0, -0.1, 1.1, math.inf, -math.inf, math.nan, True])
+@pytest.mark.parametrize(
+    "value",
+    [0.0, -0.1, 1.1, math.inf, -math.inf, math.nan, 10**1000, True],
+)
 def test_sampling_frame_rejects_invalid_selection_probability(value: object) -> None:
     with pytest.raises((TypeError, ValueError)):
         validate_sampling_frame(_replace_pair(_frame(), 0, selection_probability=value))
 
 
-@pytest.mark.parametrize("value", [0.4, 0.6, 0.0, 1.0, math.inf, math.nan, True])
+@pytest.mark.parametrize(
+    "value",
+    [0.4, 0.6, 0.0, 1.0, math.inf, math.nan, 10**1000, True],
+)
 def test_sampling_frame_requires_fair_treatment_probability(value: object) -> None:
     with pytest.raises((TypeError, ValueError)):
         validate_sampling_frame(_replace_pair(_frame(), 0, treatment_probability=value))
