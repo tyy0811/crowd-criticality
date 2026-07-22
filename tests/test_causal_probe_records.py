@@ -1,8 +1,132 @@
-from dataclasses import FrozenInstanceError, fields
+from dataclasses import MISSING, FrozenInstanceError, fields
+import inspect
 
 import pytest
 
 from critaudit.sim.harness import causal_probe_records as records
+
+
+_EXPECTED_RECORD_SCHEMAS = (
+    (
+        records.ParentEligibility,
+        (
+            ("parent_item_id", "str"),
+            ("author_agent_id", "int"),
+            ("created_round", "int"),
+        ),
+    ),
+    (
+        records.CandidatePair,
+        (
+            ("pair_id", "str"),
+            ("parent_item_id", "str"),
+            ("agent_id", "int"),
+            ("round_id", "int"),
+            ("stratum_id", "str"),
+            ("selection_probability", "float"),
+            ("treatment_probability", "float"),
+            ("parent_first_readable_round", "int"),
+            ("prior_exposure_count", "int"),
+            ("complete_same_action_opportunity", "bool"),
+        ),
+    ),
+    (
+        records.SamplingFrame,
+        (
+            ("frame_id", "str"),
+            ("parent_records", "tuple[ParentEligibility, ...]"),
+            ("excluded_recipient_agent_ids", "tuple[int, ...]"),
+            ("candidate_pairs", "tuple[CandidatePair, ...]"),
+        ),
+    ),
+    (
+        records.PairEligibilityEvidence,
+        (
+            ("pair_id", "str"),
+            ("parent_author_agent_id", "int"),
+            ("parent_created_round", "int"),
+            ("first_readable_round", "int"),
+            ("prior_exposure_count", "int"),
+            ("complete_same_action_opportunity", "bool"),
+        ),
+    ),
+    (
+        records.FrameEligibilityEvidence,
+        (
+            ("frame_id", "str"),
+            ("news_user_agent_id", "int"),
+            ("pair_evidence", "tuple[PairEligibilityEvidence, ...]"),
+        ),
+    ),
+    (
+        records.StratumDraw,
+        (
+            ("frame_id", "str"),
+            ("stratum_id", "str"),
+            ("selected_pair_id", "str | None"),
+        ),
+    ),
+    (
+        records.Assignment,
+        (
+            ("assignment_id", "str"),
+            ("frame_id", "str"),
+            ("pair_id", "str"),
+            ("filler_item_id", "str"),
+            ("treated", "bool"),
+        ),
+    ),
+    (
+        records.Outcome,
+        (
+            ("assignment_id", "str"),
+            ("parent_served", "bool"),
+            ("parent_seen_in_background", "bool"),
+            ("feed_length_before", "int"),
+            ("feed_length_after", "int"),
+            ("direct_child_item_id", "str | None"),
+            ("direct_child_parent_id", "str | None"),
+            ("child_author_agent_id", "int | None"),
+            ("child_round", "int | None"),
+        ),
+    ),
+    (
+        records.ProbeManifest,
+        (
+            ("run_id", "str"),
+            ("frame_id", "str"),
+            ("seed_stream_id", "str"),
+            ("raw_seed", "int"),
+            ("root_ids", "tuple[str, ...]"),
+            ("round_ids", "tuple[int, ...]"),
+            ("event_ids", "tuple[str, ...]"),
+            ("pair_ids", "tuple[str, ...]"),
+            ("assignment_ids", "tuple[str, ...]"),
+        ),
+    ),
+    (
+        records.RReplyEstimate,
+        (
+            ("frame_id", "str"),
+            ("estimate", "float"),
+            ("estimated_diagonal_variance_bound", "float"),
+            ("standard_error_conservative", "float"),
+            ("ci95_low", "float"),
+            ("ci95_high", "float"),
+            ("deterministic_worst_case_variance_bound", "float"),
+            ("parent_count", "int"),
+            ("candidate_pair_count", "int"),
+            ("stratum_count", "int"),
+            ("draw_count", "int"),
+            ("selected_count", "int"),
+            ("no_selection_count", "int"),
+            ("treated_count", "int"),
+            ("control_count", "int"),
+            ("response_count", "int"),
+            ("status", "str"),
+        ),
+    ),
+)
 
 
 def _frame() -> records.SamplingFrame:
@@ -179,6 +303,27 @@ def test_exact_public_surface_is_frozen():
 def test_record_field_order_and_immutability_are_frozen(record_type, expected_fields):
     assert tuple(field.name for field in fields(record_type)) == expected_fields
     assert record_type.__dataclass_params__.frozen is True
+
+
+@pytest.mark.parametrize(("record_type", "expected_schema"), _EXPECTED_RECORD_SCHEMAS)
+def test_record_annotations_are_frozen(record_type, expected_schema):
+    assert tuple(record_type.__annotations__.items()) == expected_schema
+
+
+@pytest.mark.parametrize(("record_type", "expected_schema"), _EXPECTED_RECORD_SCHEMAS)
+def test_record_constructor_parameters_are_required(record_type, expected_schema):
+    signature = inspect.signature(record_type)
+    expected_names = tuple(name for name, _ in expected_schema)
+
+    assert tuple(signature.parameters) == expected_names
+    dataclass_fields = {field.name: field for field in fields(record_type)}
+    for name, annotation in expected_schema:
+        parameter = signature.parameters[name]
+        assert parameter.annotation == annotation
+        assert parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        assert parameter.default is inspect.Parameter.empty
+        assert dataclass_fields[name].default is MISSING
+        assert dataclass_fields[name].default_factory is MISSING
 
 
 def test_record_instances_reject_mutation():
