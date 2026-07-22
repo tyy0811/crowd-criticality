@@ -26,24 +26,42 @@ def test_branch_b_text_is_frozen_verbatim():
 def test_r_reply_has_no_hawkes_n_symbol_alias():
     aliases = {
         name
-        for name in dir(spec)
-        if name.isupper() and getattr(spec, name) == spec.ESTIMAND_NAME
+        for name in spec.__all__
+        if getattr(spec, name) == "R_reply"
     }
     assert aliases == {"ESTIMAND_NAME"}
+
+
+def test_exact_public_surface_is_frozen():
+    assert type(spec.__all__) is tuple
+    assert spec.__all__ == (
+        "SCHEMA_VERSION",
+        "TREATMENT_PROBABILITY",
+        "MAX_EXPERIMENTAL_PARENTS_PER_AGENT_ROUND",
+        "OUTCOME_LAG_ROUNDS",
+        "NEAR_CRITICAL_ABS_TOL",
+        "STATUS_DESIGN_ONLY",
+        "STATUS_RECOVERABILITY_PASSED",
+        "STATUS_RECOVERABILITY_FAILED",
+        "ESTIMAND_NAME",
+        "REQUIRED_ASSIGNMENT_FIELDS",
+        "REQUIRED_GATE_FIELDS",
+        "BRANCH_B_TEXT",
+    )
 
 
 def test_required_assignment_fields_are_an_exact_immutable_tuple():
     assert type(spec.REQUIRED_ASSIGNMENT_FIELDS) is tuple
     assert spec.REQUIRED_ASSIGNMENT_FIELDS == (
         "assignment_id",
-        "round",
+        "round_id",
         "agent_id",
-        "native_parent_post_id",
-        "filler_post_id",
+        "parent_item_id",
+        "filler_item_id",
         "selection_probability",
         "treatment_probability",
-        "treatment_arm",
-        "first_readable_round",
+        "treated",
+        "parent_first_readable_round",
     )
 
 

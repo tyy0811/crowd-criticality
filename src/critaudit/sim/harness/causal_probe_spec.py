@@ -1,5 +1,20 @@
 """Frozen executable vocabulary for the OASIS causal-probe design."""
 
+__all__ = (
+    "SCHEMA_VERSION",
+    "TREATMENT_PROBABILITY",
+    "MAX_EXPERIMENTAL_PARENTS_PER_AGENT_ROUND",
+    "OUTCOME_LAG_ROUNDS",
+    "NEAR_CRITICAL_ABS_TOL",
+    "STATUS_DESIGN_ONLY",
+    "STATUS_RECOVERABILITY_PASSED",
+    "STATUS_RECOVERABILITY_FAILED",
+    "ESTIMAND_NAME",
+    "REQUIRED_ASSIGNMENT_FIELDS",
+    "REQUIRED_GATE_FIELDS",
+    "BRANCH_B_TEXT",
+)
+
 SCHEMA_VERSION = 1
 
 TREATMENT_PROBABILITY = 0.5
@@ -15,14 +30,14 @@ ESTIMAND_NAME = "R_reply"
 
 REQUIRED_ASSIGNMENT_FIELDS = (
     "assignment_id",
-    "round",
+    "round_id",
     "agent_id",
-    "native_parent_post_id",
-    "filler_post_id",
+    "parent_item_id",
+    "filler_item_id",
     "selection_probability",
     "treatment_probability",
-    "treatment_arm",
-    "first_readable_round",
+    "treated",
+    "parent_first_readable_round",
 )
 
 REQUIRED_GATE_FIELDS = (
