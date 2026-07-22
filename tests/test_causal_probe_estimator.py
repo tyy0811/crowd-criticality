@@ -1,425 +1,233 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import replace
 import math
 
 import pytest
 
-from critaudit.sim.harness import causal_probe_spec as spec
 from critaudit.sim.harness.causal_probe import (
-    Assignment,
-    Outcome,
+    deterministic_worst_case_variance_bound,
     estimate_r_reply,
-    validate_assignments,
-    validate_outcomes,
 )
+from critaudit.sim.harness.causal_probe_records import (
+    Assignment,
+    CandidatePair,
+    Outcome,
+    ParentEligibility,
+    RReplyEstimate,
+    SamplingFrame,
+    StratumDraw,
+)
+from critaudit.sim.harness.causal_probe_spec import STATUS_DESIGN_ONLY
 
 
-def _assignment(
-    assignment_id: str = "a1",
-    *,
-    round_id: int = 4,
-    agent_id: int = 7,
-    parent_item_id: str = "post:11",
-    selection_probability: float = 0.25,
-    treatment_probability: float = 0.5,
-    treated: bool = True,
-    parent_first_readable_round: int | None = None,
-) -> Assignment:
-    return Assignment(
-        assignment_id=assignment_id,
-        round_id=round_id,
-        agent_id=agent_id,
-        parent_item_id=parent_item_id,
-        filler_item_id="post:12",
-        selection_probability=selection_probability,
-        treatment_probability=treatment_probability,
-        treated=treated,
-        parent_first_readable_round=(
-            round_id
-            if parent_first_readable_round is None
-            else parent_first_readable_round
+def _frame() -> SamplingFrame:
+    return SamplingFrame(
+        frame_id="frame:estimator",
+        parent_records=(
+            ParentEligibility("parent:1", author_agent_id=10, created_round=1),
+            ParentEligibility("parent:2", author_agent_id=11, created_round=2),
+        ),
+        excluded_recipient_agent_ids=(10, 11, 99),
+        candidate_pairs=(
+            CandidatePair(
+                pair_id="pair:1",
+                parent_item_id="parent:1",
+                agent_id=20,
+                round_id=3,
+                stratum_id="agent:20:round:3",
+                selection_probability=0.4,
+                treatment_probability=0.5,
+                parent_first_readable_round=3,
+                prior_exposure_count=0,
+                complete_same_action_opportunity=True,
+            ),
+            CandidatePair(
+                pair_id="pair:2",
+                parent_item_id="parent:2",
+                agent_id=20,
+                round_id=3,
+                stratum_id="agent:20:round:3",
+                selection_probability=0.4,
+                treatment_probability=0.5,
+                parent_first_readable_round=3,
+                prior_exposure_count=0,
+                complete_same_action_opportunity=True,
+            ),
+            CandidatePair(
+                pair_id="pair:3",
+                parent_item_id="parent:1",
+                agent_id=21,
+                round_id=4,
+                stratum_id="agent:21:round:4",
+                selection_probability=0.5,
+                treatment_probability=0.5,
+                parent_first_readable_round=4,
+                prior_exposure_count=0,
+                complete_same_action_opportunity=True,
+            ),
         ),
     )
 
 
-def _outcome(
-    assignment: Assignment,
-    *,
-    parent_served: bool | None = None,
-    parent_seen_in_background: bool = False,
-    feed_length_before: int = 4,
-    feed_length_after: int = 4,
-    response: bool = False,
-    direct_child_item_id: str | None = None,
-    direct_child_parent_id: str | None = None,
-    child_round: int | None = None,
-) -> Outcome:
-    if parent_served is None:
-        parent_served = assignment.treated
-    if response:
-        direct_child_item_id = f"comment:{assignment.assignment_id}"
-        direct_child_parent_id = assignment.parent_item_id
-        child_round = assignment.round_id + spec.OUTCOME_LAG_ROUNDS
-    return Outcome(
-        assignment_id=assignment.assignment_id,
-        parent_served=parent_served,
-        parent_seen_in_background=parent_seen_in_background,
-        feed_length_before=feed_length_before,
-        feed_length_after=feed_length_after,
-        direct_child_item_id=direct_child_item_id,
-        direct_child_parent_id=direct_child_parent_id,
-        child_round=child_round,
+def _draws() -> tuple[StratumDraw, ...]:
+    return (
+        StratumDraw(
+            frame_id="frame:estimator",
+            stratum_id="agent:20:round:3",
+            selected_pair_id="pair:1",
+        ),
+        StratumDraw(
+            frame_id="frame:estimator",
+            stratum_id="agent:21:round:4",
+            selected_pair_id=None,
+        ),
     )
 
 
-def _two_parent_zero_response_fixture() -> tuple[list[Assignment], list[Outcome]]:
-    assignments = [
-        _assignment("a1", agent_id=1, parent_item_id="post:1"),
-        _assignment(
-            "a2", agent_id=2, parent_item_id="post:2", treated=False
+def _assignments(*, treated: bool = True) -> tuple[Assignment, ...]:
+    return (
+        Assignment(
+            assignment_id="assignment:1",
+            frame_id="frame:estimator",
+            pair_id="pair:1",
+            filler_item_id="filler:1",
+            treated=treated,
         ),
-    ]
-    return assignments, [_outcome(assignment) for assignment in assignments]
-
-
-def test_plan_example_records_are_immutable():
-    assignment = Assignment(
-        assignment_id="round:agent:parent",
-        round_id=4,
-        agent_id=7,
-        parent_item_id="post:11",
-        filler_item_id="post:12",
-        selection_probability=0.25,
-        treatment_probability=0.5,
-        treated=True,
-        parent_first_readable_round=4,
-    )
-    outcome = Outcome(
-        assignment_id="round:agent:parent",
-        parent_served=True,
-        parent_seen_in_background=False,
-        feed_length_before=4,
-        feed_length_after=4,
-        direct_child_item_id="comment:21",
-        direct_child_parent_id="post:11",
-        child_round=4,
     )
 
-    validate_assignments([assignment])
-    validate_outcomes([assignment], [outcome])
-    with pytest.raises(FrozenInstanceError):
-        assignment.treated = False
-    with pytest.raises(FrozenInstanceError):
-        outcome.parent_served = False
 
-
-def test_hand_computed_two_parent_ht_estimate_can_exceed_one():
-    assignments = [
-        _assignment(
-            "a1",
-            agent_id=1,
-            parent_item_id="post:1",
-            selection_probability=0.25,
-            treatment_probability=0.5,
+def _outcomes(*, response: bool = True) -> tuple[Outcome, ...]:
+    return (
+        Outcome(
+            assignment_id="assignment:1",
+            parent_served=True,
+            parent_seen_in_background=False,
+            feed_length_before=25,
+            feed_length_after=25,
+            direct_child_item_id="child:1" if response else None,
+            direct_child_parent_id="parent:1" if response else None,
+            child_author_agent_id=20 if response else None,
+            child_round=3 if response else None,
         ),
-        _assignment(
-            "a2", agent_id=2, parent_item_id="post:1", treated=False
-        ),
-        _assignment(
-            "a3",
-            agent_id=3,
-            parent_item_id="post:2",
-            selection_probability=0.5,
-            treatment_probability=0.5,
-        ),
-        _assignment("a4", agent_id=4, parent_item_id="post:2"),
-    ]
-    outcomes = [
-        _outcome(assignments[0], response=True),
-        _outcome(assignments[1]),
-        _outcome(assignments[2], response=True),
-        _outcome(assignments[3]),
-    ]
+    )
 
-    result = estimate_r_reply(assignments, outcomes)
 
-    expected_se = math.sqrt(17.0)
-    assert result.estimate == pytest.approx(6.0)
-    assert result.standard_error == pytest.approx(expected_se)
-    assert result.ci95_low == pytest.approx(6.0 - 1.96 * expected_se)
-    assert result.ci95_high == pytest.approx(6.0 + 1.96 * expected_se)
+def test_complete_frame_estimate_can_exceed_one_with_explicit_no_selection() -> None:
+    result = estimate_r_reply(_frame(), _draws(), _assignments(), _outcomes())
+
+    expected_observed_variance = 5.0
+    expected_worst_case_variance = 2.75
+    expected_se = math.sqrt(expected_observed_variance)
+    assert type(result) is RReplyEstimate
+    assert result.frame_id == "frame:estimator"
+    assert result.estimate == pytest.approx(2.5)
+    assert result.estimated_diagonal_variance_bound == pytest.approx(
+        expected_observed_variance
+    )
+    assert result.standard_error_conservative == pytest.approx(expected_se)
+    assert result.ci95_low == pytest.approx(2.5 - 1.96 * expected_se)
+    assert result.ci95_high == pytest.approx(2.5 + 1.96 * expected_se)
+    assert result.deterministic_worst_case_variance_bound == pytest.approx(
+        expected_worst_case_variance
+    )
     assert result.parent_count == 2
-    assert result.candidate_pair_count == 4
-    assert result.treated_count == 3
-    assert result.control_count == 1
-    assert result.response_count == 2
-    assert result.status == spec.STATUS_DESIGN_ONLY
+    assert result.candidate_pair_count == 3
+    assert result.stratum_count == 2
+    assert result.draw_count == 2
+    assert result.selected_count == 1
+    assert result.no_selection_count == 1
+    assert result.treated_count == 1
+    assert result.control_count == 0
+    assert result.response_count == 1
+    assert result.status == STATUS_DESIGN_ONLY
 
 
-def test_zero_response_has_zero_standard_error_and_point_ci():
-    assignments, outcomes = _two_parent_zero_response_fixture()
-
-    result = estimate_r_reply(assignments, outcomes)
+def test_zero_response_has_point_ci_but_positive_frame_bound() -> None:
+    result = estimate_r_reply(
+        _frame(),
+        _draws(),
+        _assignments(),
+        _outcomes(response=False),
+    )
 
     assert result.estimate == 0.0
-    assert result.standard_error == 0.0
+    assert result.estimated_diagonal_variance_bound == 0.0
+    assert result.standard_error_conservative == 0.0
     assert result.ci95_low == 0.0
     assert result.ci95_high == 0.0
+    assert result.deterministic_worst_case_variance_bound == pytest.approx(2.75)
     assert result.response_count == 0
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("selection_probability", None),
-        ("selection_probability", 0.0),
-        ("selection_probability", -0.1),
-        ("selection_probability", 1.01),
-        ("selection_probability", math.inf),
-        ("selection_probability", math.nan),
-        ("treatment_probability", None),
-        ("treatment_probability", 0.0),
-        ("treatment_probability", -0.1),
-        ("treatment_probability", 1.01),
-        ("treatment_probability", -math.inf),
-        ("treatment_probability", math.nan),
-    ],
-)
-def test_invalid_inclusion_probability_fails_closed(field, value):
-    overrides = {field: value}
-    assignment = _assignment(**overrides)
-
-    with pytest.raises(ValueError, match=field):
-        validate_assignments([assignment])
-
-
-def test_duplicate_assignment_ids_fail_closed():
-    assignments = [_assignment("duplicate"), _assignment("duplicate", agent_id=8)]
-
-    with pytest.raises(ValueError, match="duplicate assignment_id"):
-        validate_assignments(assignments)
-
-
-def test_empty_assignment_id_fails_closed():
-    with pytest.raises(ValueError, match="assignment_id must be a non-empty string"):
-        validate_assignments([_assignment("")])
-
-
-def test_empty_filler_item_id_fails_closed():
-    assignment = _assignment()
-    assignment = Assignment(**{**assignment.__dict__, "filler_item_id": ""})
-
-    with pytest.raises(ValueError, match="filler_item_id must be a non-empty string"):
-        validate_assignments([assignment])
-
-
-def test_matching_empty_assignment_and_outcome_ids_fail_at_assignment_gate():
-    assignment = _assignment("")
-    outcome = _outcome(assignment)
-
-    with pytest.raises(ValueError, match="assignment_id must be a non-empty string"):
-        validate_outcomes([assignment], [outcome])
-
-
-def test_empty_outcome_assignment_id_fails_closed():
-    assignment = _assignment()
-    outcome = Outcome(**{**_outcome(assignment).__dict__, "assignment_id": ""})
-
-    with pytest.raises(
-        ValueError, match="outcome assignment_id must be a non-empty string"
-    ):
-        validate_outcomes([assignment], [outcome])
-
-
-def test_duplicate_outcome_ids_fail_closed():
-    assignments, outcomes = _two_parent_zero_response_fixture()
-    outcomes.append(_outcome(assignments[0]))
-
-    with pytest.raises(ValueError, match="duplicate outcome assignment_id"):
-        validate_outcomes(assignments, outcomes)
-
-
-def test_missing_outcome_id_fails_closed():
-    assignments, outcomes = _two_parent_zero_response_fixture()
-
-    with pytest.raises(ValueError, match="exactly one outcome"):
-        validate_outcomes(assignments, outcomes[:-1])
-
-
-def test_unknown_outcome_id_fails_closed():
-    assignments, outcomes = _two_parent_zero_response_fixture()
-    outcomes.append(
-        Outcome(
-            assignment_id="unknown",
+def test_holdout_counts_in_complete_ledgers_without_contributing() -> None:
+    assignments = _assignments(treated=False)
+    outcomes = (
+        replace(
+            _outcomes(response=False)[0],
             parent_served=False,
-            parent_seen_in_background=False,
-            feed_length_before=4,
-            feed_length_after=4,
-            direct_child_item_id=None,
-            direct_child_parent_id=None,
-            child_round=None,
-        )
+        ),
     )
 
-    with pytest.raises(ValueError, match="unknown assignment_id"):
-        validate_outcomes(assignments, outcomes)
+    result = estimate_r_reply(_frame(), _draws(), assignments, outcomes)
+
+    assert result.estimate == 0.0
+    assert result.selected_count == 1
+    assert result.treated_count == 0
+    assert result.control_count == 1
+    assert result.response_count == 0
 
 
-def test_more_than_one_experimental_parent_per_agent_round_fails_closed():
-    assignments = [
-        _assignment("a1", agent_id=7, parent_item_id="post:1"),
-        _assignment("a2", agent_id=7, parent_item_id="post:2"),
-    ]
+def test_deterministic_worst_case_bound_uses_every_candidate_pair() -> None:
+    assert deterministic_worst_case_variance_bound(_frame()) == pytest.approx(2.75)
 
-    with pytest.raises(ValueError, match="agent-round"):
-        validate_assignments(assignments)
-
-
-def test_treatment_without_verified_service_fails_closed():
-    assignment = _assignment()
-
-    with pytest.raises(ValueError, match="treated parent must be served"):
-        validate_outcomes([assignment], [_outcome(assignment, parent_served=False)])
-
-
-def test_treated_background_duplication_fails_closed():
-    assignment = _assignment()
-
-    with pytest.raises(ValueError, match="background duplication"):
-        validate_outcomes(
-            [assignment],
-            [_outcome(assignment, parent_seen_in_background=True)],
-        )
-
-
-@pytest.mark.parametrize(
-    ("parent_served", "parent_seen_in_background"),
-    [(True, False), (False, True)],
-)
-def test_holdout_parent_leakage_fails_closed(
-    parent_served, parent_seen_in_background
-):
-    assignment = _assignment(treated=False)
-
-    with pytest.raises(ValueError, match="holdout parent leakage"):
-        validate_outcomes(
-            [assignment],
-            [
-                _outcome(
-                    assignment,
-                    parent_served=parent_served,
-                    parent_seen_in_background=parent_seen_in_background,
-                )
-            ],
-        )
-
-
-@pytest.mark.parametrize(
-    ("before", "after", "message"),
-    [(-1, -1, "nonnegative"), (4, 3, "feed length changed")],
-)
-def test_invalid_feed_lengths_fail_closed(before, after, message):
-    assignment = _assignment()
-
-    with pytest.raises(ValueError, match=message):
-        validate_outcomes(
-            [assignment],
-            [
-                _outcome(
-                    assignment,
-                    feed_length_before=before,
-                    feed_length_after=after,
-                )
-            ],
-        )
-
-
-def test_mismatched_native_child_parent_fails_closed():
-    assignment = _assignment()
-    outcome = _outcome(assignment, response=True)
-    outcome = Outcome(
-        **{
-            **outcome.__dict__,
-            "direct_child_parent_id": "post:different",
-        }
+    frame_with_extra_pair = replace(
+        _frame(),
+        candidate_pairs=_frame().candidate_pairs
+        + (
+            CandidatePair(
+                pair_id="pair:4",
+                parent_item_id="parent:2",
+                agent_id=22,
+                round_id=5,
+                stratum_id="agent:22:round:5",
+                selection_probability=0.5,
+                treatment_probability=0.5,
+                parent_first_readable_round=5,
+                prior_exposure_count=0,
+                complete_same_action_opportunity=True,
+            ),
+        ),
     )
-
-    with pytest.raises(ValueError, match="native child parent"):
-        validate_outcomes([assignment], [outcome])
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("direct_child_item_id", ""),
-        ("direct_child_parent_id", ""),
-    ],
-)
-def test_empty_direct_child_identifier_fails_closed(field, value):
-    assignment = _assignment()
-    outcome = _outcome(assignment, response=True)
-    outcome = Outcome(**{**outcome.__dict__, field: value})
-
-    with pytest.raises(ValueError, match=f"{field} must be a non-empty string"):
-        validate_outcomes([assignment], [outcome])
+    assert deterministic_worst_case_variance_bound(
+        frame_with_extra_pair
+    ) == pytest.approx(3.5)
 
 
-@pytest.mark.parametrize(
-    ("child_item", "child_parent", "child_round"),
-    [
-        ("comment:1", None, None),
-        (None, "post:11", None),
-        (None, None, 4),
-        ("comment:1", "post:11", None),
-    ],
-)
-def test_partial_child_fields_fail_closed(child_item, child_parent, child_round):
-    assignment = _assignment()
-
-    with pytest.raises(ValueError, match="child fields"):
-        validate_outcomes(
-            [assignment],
-            [
-                _outcome(
-                    assignment,
-                    direct_child_item_id=child_item,
-                    direct_child_parent_id=child_parent,
-                    child_round=child_round,
-                )
-            ],
+def test_deterministic_worst_case_bound_validates_the_frame() -> None:
+    with pytest.raises(ValueError):
+        deterministic_worst_case_variance_bound(
+            replace(_frame(), parent_records=_frame().parent_records[:1])
         )
 
 
-def test_control_arm_direct_child_fails_closed():
-    assignment = _assignment(treated=False)
-
-    with pytest.raises(ValueError, match="control arm direct child"):
-        validate_outcomes([assignment], [_outcome(assignment, response=True)])
-
-
-def test_prior_or_inconsistent_first_readable_round_fails_closed():
-    assignment = _assignment(parent_first_readable_round=3)
-
-    with pytest.raises(ValueError, match="first-readable round"):
-        validate_assignments([assignment])
-
-
-def test_late_outcome_fails_closed():
-    assignment = _assignment()
-    outcome = _outcome(assignment, response=True)
-    outcome = Outcome(**{**outcome.__dict__, "child_round": 5})
-
-    with pytest.raises(ValueError, match="outcome round"):
-        validate_outcomes([assignment], [outcome])
-
-
-@pytest.mark.parametrize("assignments", [[], [_assignment(parent_item_id="")]])
-def test_empty_or_missing_eligible_parent_fails_closed(assignments):
-    with pytest.raises(ValueError, match="eligible parent"):
-        validate_assignments(assignments)
-
-
-def test_estimator_requires_two_unique_eligible_parents():
-    assignment = _assignment()
-
-    with pytest.raises(ValueError, match="at least two unique eligible parents"):
-        estimate_r_reply([assignment], [_outcome(assignment)])
+@pytest.mark.parametrize(
+    ("frame", "draws", "assignments", "outcomes"),
+    [
+        (
+            replace(_frame(), parent_records=_frame().parent_records[:1]),
+            _draws(),
+            _assignments(),
+            _outcomes(),
+        ),
+        (_frame(), _draws()[:1], _assignments(), _outcomes()),
+        (_frame(), _draws(), (), _outcomes()),
+        (_frame(), _draws(), _assignments(), ()),
+    ],
+)
+def test_estimator_calls_every_complete_ledger_validator(
+    frame: SamplingFrame,
+    draws: tuple[StratumDraw, ...],
+    assignments: tuple[Assignment, ...],
+    outcomes: tuple[Outcome, ...],
+) -> None:
+    with pytest.raises(ValueError):
+        estimate_r_reply(frame, draws, assignments, outcomes)
