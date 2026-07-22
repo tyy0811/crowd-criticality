@@ -199,6 +199,37 @@ def test_duplicate_assignment_ids_fail_closed():
         validate_assignments(assignments)
 
 
+def test_empty_assignment_id_fails_closed():
+    with pytest.raises(ValueError, match="assignment_id must be a non-empty string"):
+        validate_assignments([_assignment("")])
+
+
+def test_empty_filler_item_id_fails_closed():
+    assignment = _assignment()
+    assignment = Assignment(**{**assignment.__dict__, "filler_item_id": ""})
+
+    with pytest.raises(ValueError, match="filler_item_id must be a non-empty string"):
+        validate_assignments([assignment])
+
+
+def test_matching_empty_assignment_and_outcome_ids_fail_at_assignment_gate():
+    assignment = _assignment("")
+    outcome = _outcome(assignment)
+
+    with pytest.raises(ValueError, match="assignment_id must be a non-empty string"):
+        validate_outcomes([assignment], [outcome])
+
+
+def test_empty_outcome_assignment_id_fails_closed():
+    assignment = _assignment()
+    outcome = Outcome(**{**_outcome(assignment).__dict__, "assignment_id": ""})
+
+    with pytest.raises(
+        ValueError, match="outcome assignment_id must be a non-empty string"
+    ):
+        validate_outcomes([assignment], [outcome])
+
+
 def test_duplicate_outcome_ids_fail_closed():
     assignments, outcomes = _two_parent_zero_response_fixture()
     outcomes.append(_outcome(assignments[0]))
@@ -313,6 +344,22 @@ def test_mismatched_native_child_parent_fails_closed():
     )
 
     with pytest.raises(ValueError, match="native child parent"):
+        validate_outcomes([assignment], [outcome])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("direct_child_item_id", ""),
+        ("direct_child_parent_id", ""),
+    ],
+)
+def test_empty_direct_child_identifier_fails_closed(field, value):
+    assignment = _assignment()
+    outcome = _outcome(assignment, response=True)
+    outcome = Outcome(**{**outcome.__dict__, field: value})
+
+    with pytest.raises(ValueError, match=f"{field} must be a non-empty string"):
         validate_outcomes([assignment], [outcome])
 
 

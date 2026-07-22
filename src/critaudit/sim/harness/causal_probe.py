@@ -69,6 +69,11 @@ def _validated_probability(value: object, field: str) -> float:
     return float(value)
 
 
+def _validate_nonempty_id(value: object, field: str, *, prefix: str = "") -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{prefix}{field} must be a non-empty string")
+
+
 def validate_assignments(assignments: Iterable[Assignment]) -> None:
     """Fail closed on assignments outside the frozen experimental contract."""
     assignment_records = tuple(assignments)
@@ -80,14 +85,19 @@ def validate_assignments(assignments: Iterable[Assignment]) -> None:
     eligible_parents: set[str] = set()
 
     for assignment in assignment_records:
+        _validate_nonempty_id(assignment.assignment_id, "assignment_id")
         if assignment.assignment_id in assignment_ids:
             raise ValueError(
                 f"duplicate assignment_id: {assignment.assignment_id!r}"
             )
         assignment_ids.add(assignment.assignment_id)
 
-        if not isinstance(assignment.parent_item_id, str) or not assignment.parent_item_id:
-            raise ValueError("missing eligible parent: parent_item_id must be non-empty")
+        _validate_nonempty_id(
+            assignment.parent_item_id,
+            "parent_item_id",
+            prefix="missing eligible parent: ",
+        )
+        _validate_nonempty_id(assignment.filler_item_id, "filler_item_id")
         eligible_parents.add(assignment.parent_item_id)
 
         _validated_probability(
@@ -127,6 +137,9 @@ def validate_outcomes(
     outcomes_by_id: dict[str, Outcome] = {}
 
     for outcome in outcome_records:
+        _validate_nonempty_id(
+            outcome.assignment_id, "outcome assignment_id"
+        )
         if outcome.assignment_id in outcomes_by_id:
             raise ValueError(
                 f"duplicate outcome assignment_id: {outcome.assignment_id!r}"
@@ -156,6 +169,14 @@ def validate_outcomes(
         if any(child_fields_present) and not all(child_fields_present):
             raise ValueError("direct child fields must be all populated or all absent")
         has_response = all(child_fields_present)
+        if outcome.direct_child_item_id is not None:
+            _validate_nonempty_id(
+                outcome.direct_child_item_id, "direct_child_item_id"
+            )
+        if outcome.direct_child_parent_id is not None:
+            _validate_nonempty_id(
+                outcome.direct_child_parent_id, "direct_child_parent_id"
+            )
 
         if assignment.treated:
             if not outcome.parent_served:
