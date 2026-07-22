@@ -16,7 +16,7 @@ This checkpoint reconciles the roadmap with the repository after Stage 2 sub-inc
 
 The global v0.3 `PRE_REGISTRATION.md` remains **DRAFT**: its freeze fields and selection-rule placeholders were not completed, no freeze tag exists, and no OSF registration is recorded. Stage 1 and Stage 2 results are therefore instrument-development or exploratory evidence relative to the global H1–H3 claims. Several later increments did freeze criteria prospectively and result-blind in local specs and code; those records remain evidence for their narrowly stated instrument claims, but they do not retroactively create a global preregistration.
 
-Status terms in this checkpoint are **Complete**, **Partial**, **Blocked**, **Not started**, and **External status unknown**. “Blocked” identifies a measured or structural impediment; it does not mean a failed hypothesis.
+Status terms in this checkpoint are **Complete**, **Partial**, **Blocked**, and **Not started**. “Blocked” identifies a measured or structural impediment; it does not mean a failed hypothesis.
 
 | Stage | State | Reconciled reading |
 |---|---|---|
@@ -46,16 +46,11 @@ The next increment is a $0, specification-first comparison:
 
 The design comparison does not presume Branch A will work. Any measurement authorization is a later owner decision after the design exposes whether a valid bridge and independent diagnostic exist.
 
-### External Stage 2 gates
+**Ratification outcome (2026-07-22).** Branch A is conditionally design-valid as a **micro-randomized exposure-response instrument** at the OASIS refresh boundary: `R_reply` estimates one-generation causal explicit-response reproduction from randomized served/holdout impressions and native parent links, while `chi_resp` is measured on a disjoint marker cohort. This authorizes implementation planning and later code/fixture development under the ratified design; it does not equate `R_reply` with Hawkes `n`, activate H1b, or authorize a scientific run. **Branch B remains the mechanical fail branch** if the refresh-isolation, scripted recoverability, independence, estimand, measurement-authorization, or budget gate fails. Design record: [`results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md`](results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md).
 
-Repository searches found no evidence that either original hard precondition is satisfied. Their status is unknown rather than failed or passed:
+### Development authority
 
-| Requirement | Repository status |
-|---|---|
-| FZJ Nebentätigkeitsanzeige | External status unknown |
-| First supervisor-defined PhD milestone | External status unknown |
-
-No future Stage 2 run is authorized until both are recorded as satisfied or the owner explicitly amends the requirement prospectively.
+**Owner amendment (2026-07-22): Repository development is not gated by external employment or milestone records.** Code, tests, specifications, and local synthetic/fixture work may continue under the measurement-integrity protocol. Scientific OASIS measurements, paid/GPU work, the registered sweep, and Stage 3 still require their own prospective instrument gates and explicit owner authorization; removing an administrative prerequisite does not relax a scientific gate.
 
 ---
 
@@ -194,18 +189,18 @@ Each stage: objective, tasks, deliverable, tests, **go/no-go**, **fallback refra
 
 ## 4. Timeline (reality-checked; data-feasibility now the binding constraint)
 
-The full Stage 0–3 arc is ~5 months. The pre-PhD window almost certainly yields **Stage 0 plus a data-feasibility outcome** — the Hawkes paper ships only if reconstruction is easy; otherwise the reconstruction/validity report is the pre-PhD artifact and the Hawkes paper slides into early PhD. Stages 2–4 run *during* the PhD as a declared side project (Nebentätigkeitsanzeige).
+The full Stage 0–3 arc is ~5 months. The pre-PhD window almost certainly yields **Stage 0 plus a data-feasibility outcome** — the Hawkes paper ships only if reconstruction is easy; otherwise the reconstruction/validity report is the pre-PhD artifact and the Hawkes paper slides into early PhD. Stages 2–4 continue as a separately managed research thread.
 
 | Window | Stages | Output | Cadence |
 |---|---|---|---|
 | **Pre-PhD wk 1–2** | Stage 0 | Frozen pre-reg + validated `critaudit` + **data-source decision** | Full-time-ish |
 | **Pre-PhD wk 3–4** | Stage 1a | Data feasibility & reconstruction validation (validity gate) | Full-time-ish |
 | **Pre-PhD wk 5-8** | Stage 1b | **Primary pre-PhD deliverable: the reconstruction/validity report.** Hawkes paper only as a conditional bonus, iff the validity gate passed with weeks to spare | Full-time-ish |
-| **PhD mo 1–3** | Stage 2 | Sim + sweep dataset | Nebentätigkeit |
-| **PhD mo 3–5** | Stage 3 | Main paper (or negative-result / inconclusive paper) | Nebentätigkeit |
+| **PhD mo 1–3** | Stage 2 | Sim + sweep dataset | Part-time research |
+| **PhD mo 3–5** | Stage 3 | Main paper (or negative-result / inconclusive paper) | Part-time research |
 | **PhD mo 2 →** | Stage 4 | `critaudit` release + consulting inbound | Parallel, low effort |
 
-**Stage-2 hard preconditions (both required):** (a) the FZJ Nebentätigkeitsanzeige covering this work is approved in writing; (b) a first PhD-project milestone, defined with the supervisor in month 1, has been met. If either is unmet, Stage 2 does not start and the project pauses cleanly at the Stage-1 artifact. Do **not** budget a six-week Hawkes paper against data that isn't reliably accessible: the reconstruction report is the honest hedge, and it is the deliverable by which the pre-PhD window is judged.
+**Development sequencing (owner-amended 2026-07-22):** repository work is governed by the scientific and budget gates in this plan, not by external employment or milestone records. Do **not** budget a six-week Hawkes paper against data that is not reliably accessible: the reconstruction report remains the honest hedge and the Stage-1 deliverable.
 
 ---
 

@@ -43,11 +43,30 @@ def test_plan_does_not_authorize_the_sweep_or_stage3():
     assert "No paid or GPU-backed measurement is authorized by this reconciliation" in plan
 
 
-def test_plan_records_both_external_gates_as_unknown():
+def test_plan_records_the_conditional_causal_probe_ratification():
     plan = _read("IMPLEMENTATION_PLAN.md")
+    design = _read("results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md")
 
-    assert "FZJ Nebentätigkeitsanzeige | External status unknown" in plan
-    assert "First supervisor-defined PhD milestone | External status unknown" in plan
+    assert "Ratification outcome (2026-07-22)" in plan
+    assert "micro-randomized exposure-response instrument" in plan
+    assert "Branch B remains the mechanical fail branch" in plan
+    assert "design ratified conditionally" in design
+    assert "R_reply" in design
+    assert "does not" in design and "H1b" in design
+
+
+def test_plan_does_not_gate_development_on_external_prerequisites():
+    plan = _read("IMPLEMENTATION_PLAN.md")
+    instrument_design = _read(
+        "results/s3_probe/2026-07-22_oasis_causal_probe_design_review.md"
+    )
+
+    assert "Nebentätig" not in plan
+    assert "supervisor-defined PhD milestone" not in plan
+    assert "Stage-2 hard preconditions" not in plan
+    assert "Repository development is not gated by external employment or milestone records" in plan
+    assert "Nebentätigkeitsanzeige" not in instrument_design
+    assert "external prerequisite" not in instrument_design.lower()
 
 
 def test_stage1_fallback_archive_is_explicitly_retrospective():
