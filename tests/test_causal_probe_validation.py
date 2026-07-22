@@ -390,6 +390,7 @@ def test_sampling_frame_derives_consistent_strata_from_pairs() -> None:
                 stratum_id="agent:20:round:3:duplicate",
                 agent_id=20,
                 round_id=3,
+                parent_first_readable_round=3,
             )
         )
 
