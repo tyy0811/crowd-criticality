@@ -159,11 +159,16 @@ def build_power_frame(parent_count: int, recipients_per_parent: int) -> Sampling
                     prior_exposure_count=0,
                     complete_same_action_opportunity=True,
                 ))
-    news_user = parent_count + recipients_per_parent * strata_per_slot
+    # The exclusion registry's LAST TWO entries are the filler author and the
+    # dedicated news user — the registered convention the scripted-control bridge
+    # derives its agent layout from — allocated contiguously after the recipients
+    # so the frame is directly runnable through run_scripted_oasis_control.
+    filler_author = parent_count + recipients_per_parent * strata_per_slot
     frame = SamplingFrame(
         frame_id=f"frame:power:{parent_count}x{recipients_per_parent}",
         parent_records=parents,
-        excluded_recipient_agent_ids=tuple(range(parent_count)) + (news_user,),
+        excluded_recipient_agent_ids=(
+            tuple(range(parent_count)) + (filler_author, filler_author + 1)),
         candidate_pairs=tuple(pairs),
     )
     validate_sampling_frame(frame)
@@ -344,15 +349,17 @@ def simulate_power_grid(parent_count: int, recipients_per_parent: int,
 
     cohorts = []
     passing = 0
-    for seed_index, schedule_seed in enumerate(schedule_seeds):
+    for schedule_seed in schedule_seeds:
         means = []
         complete = True
         for cell in cells:
-            per_schedule = cell.get("per_schedule", [])
-            if seed_index >= len(per_schedule):
+            row = next(
+                (r for r in cell.get("per_schedule", [])
+                 if r["schedule_seed"] == int(schedule_seed)), None)
+            if row is None:
                 complete = False
                 break
-            means.append(per_schedule[seed_index]["mean_estimate"])
+            means.append(row["mean_estimate"])
         if not complete:
             structural_failures += 1
             failure_notes.append(f"incomplete cohort for seed {schedule_seed}")

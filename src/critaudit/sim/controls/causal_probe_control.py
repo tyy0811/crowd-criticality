@@ -258,9 +258,9 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
 
     parent_count = len(frame.parent_records)
     recipients = sorted({pair.agent_id for pair in frame.candidate_pairs})
-    recipients_per_parent = len(frame.candidate_pairs) // parent_count
-    filler_author = parent_count + parent_count * recipients_per_parent
-    news_user = filler_author + 1
+    # Registered convention: the exclusion registry's last two entries are the
+    # filler/organic author and the dedicated news user.
+    filler_author, news_user = frame.excluded_recipient_agent_ids[-2:]
     background_post_ids = (2 * parent_count + 1, 2 * parent_count + 2)
 
     sentinel = _make_news_sentinel_model(

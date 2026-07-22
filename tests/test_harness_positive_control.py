@@ -228,7 +228,8 @@ def test_run_oasis_minimal_returns_per_call_telemetry(tmp_path, monkeypatch):
     model = _FakeModel()
     db_path = str(tmp_path / "oasis.db")
 
-    monkeypatch.setattr(oa, "_run_db_path", lambda seed: db_path)
+    monkeypatch.setattr(oa, "_run_db_path",
+                        lambda seed, keep_existing=False: db_path)
     monkeypatch.setattr(oa, "_make_counting_model", lambda **kwargs: model)
     monkeypatch.setattr(oa, "_make_news_sentinel_model", lambda **kwargs: object())
     monkeypatch.setattr(oa, "build_follow_edges", lambda *args, **kwargs: [])
