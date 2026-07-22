@@ -46,6 +46,8 @@ __all__ = (
     "aggregate_marker_cell",
     "compute_chi_resp",
     "locate_chi_peak",
+    "require_disjoint_manifests",
+    "require_disjoint_seed_sets",
     "run_recursive_marker_control",
 )
 
@@ -251,6 +253,34 @@ def locate_chi_peak(cells) -> ChiPeak:
         seed_argmax_consistency_count=consistent,
         seed_count=seed_count,
     )
+
+
+def require_disjoint_manifests(reply_manifest, marker_manifest):
+    """Independence firewall between the `R_reply` (ProbeManifest) and `chi_resp`
+    (MarkerManifest) cohorts: shared identifiers in ANY field fail closed."""
+    for field in ("run_id", "frame_id", "seed_stream_id", "raw_seed"):
+        if getattr(reply_manifest, field) == getattr(marker_manifest, field):
+            raise ValueError(
+                f"reply and marker manifests share {field} "
+                f"({getattr(reply_manifest, field)!r}) — cohorts are not disjoint")
+    for field in ("root_ids", "round_ids", "event_ids", "pair_ids", "assignment_ids"):
+        overlap = set(getattr(reply_manifest, field)) & set(
+            getattr(marker_manifest, field))
+        if overlap:
+            raise ValueError(
+                f"reply and marker manifests overlap in {field}: "
+                f"{sorted(overlap)[:3]!r} — cohorts are not disjoint")
+
+
+def require_disjoint_seed_sets(*seed_sets):
+    """Generic pairwise-disjointness guard for frozen seed registries."""
+    for i in range(len(seed_sets)):
+        for j in range(i + 1, len(seed_sets)):
+            overlap = set(seed_sets[i]) & set(seed_sets[j])
+            if overlap:
+                raise ValueError(
+                    f"seed sets {i} and {j} overlap on {sorted(overlap)!r} "
+                    f"(fail-closed)")
 
 
 async def _drive_recursive_marker_control(root_count, opportunities_per_parent,
