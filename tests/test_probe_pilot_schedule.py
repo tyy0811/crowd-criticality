@@ -146,6 +146,65 @@ def test_causal_hooks_fail_closed_without_predraw_database(monkeypatch, tmp_path
                           causal_frame=frame, causal_controller=_hook_controller(frame))
 
 
+def test_eligibility_evidence_measures_complete_same_action_opportunity(tmp_path):
+    """Opportunity is MEASURED, not assumed (review): recipient signed up AND
+    the parent is a ROOT post — a derived (quote) parent cannot natively
+    receive all three registered same-actions on the installed platform."""
+    from critaudit.sim.harness.causal_probe_records import (
+        CandidatePair, ParentEligibility, SamplingFrame)
+    from critaudit.sim.harness.causal_probe_validation import (
+        validate_frame_provenance)
+    from critaudit.sim.harness.oasis_adapter import (
+        NEWS_AGENT_NAME, load_frame_eligibility_evidence)
+
+    db = str(tmp_path / "evidence.db")
+    con = sqlite3.connect(db)
+    con.executescript(
+        """
+        CREATE TABLE user (user_id INTEGER PRIMARY KEY, agent_id INTEGER,
+                           user_name TEXT, name TEXT);
+        CREATE TABLE post (post_id INTEGER PRIMARY KEY, user_id INTEGER,
+                           original_post_id INTEGER, content TEXT,
+                           quote_content TEXT, created_at DATETIME);
+        CREATE TABLE trace (user_id INTEGER, created_at DATETIME,
+                            action TEXT, info TEXT);
+        """
+    )
+    for agent_id, name in ((0, "author_a"), (1, "author_b"),
+                           (2, "recipient"), (9, NEWS_AGENT_NAME)):
+        con.execute("INSERT INTO user VALUES(?,?,?,?)",
+                    (agent_id, agent_id, name, name))
+    con.execute("INSERT INTO post VALUES(1, 0, NULL, 'root parent', NULL, 0)")
+    con.execute("INSERT INTO post VALUES(2, 1, NULL, 'other root', NULL, 0)")
+    con.execute("INSERT INTO post VALUES(3, 1, 1, 'root parent', 'quote', 0)")
+    con.commit()
+    con.close()
+
+    def _pair(pair_id, parent, agent=2):
+        return CandidatePair(
+            pair_id=pair_id, parent_item_id=parent, agent_id=agent, round_id=1,
+            stratum_id=f"agent:{agent}:round:1", selection_probability=0.4,
+            treatment_probability=0.5, parent_first_readable_round=1,
+            prior_exposure_count=0, complete_same_action_opportunity=True)
+
+    frame = SamplingFrame(
+        frame_id="frame:evidence",
+        parent_records=(
+            ParentEligibility("post:1", author_agent_id=0, created_round=0),
+            ParentEligibility("post:3", author_agent_id=1, created_round=0),
+        ),
+        excluded_recipient_agent_ids=(0, 1, 9),
+        candidate_pairs=(_pair("pair:root", "post:1"),
+                         _pair("pair:derived", "post:3")),
+    )
+    evidence = load_frame_eligibility_evidence(frame, db, ())
+    by_pair = {row.pair_id: row for row in evidence.pair_evidence}
+    assert by_pair["pair:root"].complete_same_action_opportunity is True
+    assert by_pair["pair:derived"].complete_same_action_opportunity is False
+    with pytest.raises(ValueError, match="complete same-action opportunity"):
+        validate_frame_provenance(frame, evidence)
+
+
 def test_marker_posts_fail_closed_on_wrong_database_round(tmp_path):
     """The banked round labels must be observed in the DB, not copied from the frozen constants."""
     db = str(tmp_path / "oasis.db")

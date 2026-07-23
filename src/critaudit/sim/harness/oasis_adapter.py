@@ -231,8 +231,12 @@ def load_frame_eligibility_evidence(frame, database_path, trace_rows):
     Everything is read from the actual DB/trace rows: parent author + creation round from the
     post table, first readability = creation round + 1 (submit-in-round-r / readable-from-r+1),
     prior exposure = refresh trace rows serving the parent to the recipient before the pair
-    round, opportunity = the recipient's signed-up user row exists. The dedicated news user is
-    identified by its DB row, and `validate_frame_provenance` enforces its exclusion."""
+    round. COMPLETE same-action opportunity is MEASURED as: the recipient's signed-up user row
+    exists AND the parent is a ROOT post (`original_post_id IS NULL`) — on the installed
+    platform a quote/repost of a derived post is redirected to its root, so all three
+    registered same-actions (comment/quote/repost) can natively land on the parent only when
+    it is a root. The dedicated news user is identified by its DB row, and
+    `validate_frame_provenance` enforces its exclusion."""
     validate_sampling_frame(frame)
     con = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
     try:
@@ -258,7 +262,8 @@ def load_frame_eligibility_evidence(frame, database_path, trace_rows):
         for pair in frame.candidate_pairs:
             parent_db_id = _causal_post_db_id(pair.parent_item_id)
             row = con.execute(
-                "SELECT user_id, created_at FROM post WHERE post_id = ?",
+                "SELECT user_id, created_at, original_post_id FROM post "
+                "WHERE post_id = ?",
                 (parent_db_id,),
             ).fetchone()
             if row is None:
@@ -267,6 +272,7 @@ def load_frame_eligibility_evidence(frame, database_path, trace_rows):
                     f"(fail-closed)")
             author_agent_id = int(row[0])
             created_round = _round_of(row[1])
+            parent_is_root = row[2] is None
             prior_exposure = sum(
                 1 for agent, round_id, ids in served
                 if agent == pair.agent_id and round_id < pair.round_id
@@ -280,7 +286,8 @@ def load_frame_eligibility_evidence(frame, database_path, trace_rows):
                 parent_created_round=created_round,
                 first_readable_round=created_round + 1,
                 prior_exposure_count=prior_exposure,
-                complete_same_action_opportunity=recipient_row is not None,
+                complete_same_action_opportunity=(
+                    recipient_row is not None and parent_is_root),
             ))
     finally:
         con.close()
