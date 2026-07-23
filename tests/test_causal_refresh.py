@@ -480,6 +480,62 @@ def test_empty_background_feed_fails_closed_on_selection(db_path):
         controller.refresh(20, 3, ())
 
 
+# --- refresh isolation: pending-exposure guard -------------------------------------------------
+
+
+def test_pending_exposure_guard_fails_closed_before_the_stratum_draw(db_path):
+    """An organic (unregistered-round) serving of a registered parent to its
+    assigned recipient BEFORE that recipient's stratum draw is an isolation
+    breach and must raise, never pass silently."""
+    controller = _controller(db_path, _Stream(0.10), _Stream(0.10))
+    parent_post = _post_dict(db_path, 1)
+    with pytest.raises(ValueError, match="isolation"):
+        controller.assert_no_pending_exposure(20, 2, (parent_post,))
+
+
+def test_pending_exposure_guard_ignores_unrelated_agents_and_drawn_strata(db_path):
+    controller = _controller(db_path, _Stream(0.10, 0.10), _Stream(0.10, 0.10))
+    parent_post = _post_dict(db_path, 1)
+    # an agent with no registered pair for this parent is unaffected
+    controller.assert_no_pending_exposure(30, 2, (parent_post,))
+    # recipient 21's only pair is parent post:2 — post:1 exposure is fine
+    controller.assert_no_pending_exposure(21, 2, (parent_post,))
+    # once agent 20's stratum is drawn, later organic exposure no longer raises
+    controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    controller.assert_no_pending_exposure(20, 3, (parent_post,))
+
+
+def test_apply_causal_refresh_guards_unregistered_rounds(db_path):
+    """The platform-facing wrapper must route unregistered refreshes of a
+    registered recipient through the pending-exposure guard (fail-open fix)."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from critaudit.sim.harness.causal_refresh import apply_causal_refresh
+
+    controller = _controller(db_path, _Stream(0.10), _Stream(0.10))
+    parent_post = _post_dict(db_path, 1)
+    platform = SimpleNamespace(
+        sandbox_clock=SimpleNamespace(time_step=2),
+        pl_utils=SimpleNamespace(),
+    )
+
+    async def leaking_base_refresh(agent_id):
+        return {"success": True, "posts": [parent_post]}
+
+    with pytest.raises(ValueError, match="isolation"):
+        asyncio.run(apply_causal_refresh(
+            leaking_base_refresh, platform, controller, 20))
+
+    async def clean_base_refresh(agent_id):
+        return {"success": True, "posts": [_post_dict(db_path, 5)]}
+
+    result = asyncio.run(apply_causal_refresh(
+        clean_base_refresh, platform, controller, 20))
+    assert result["posts"][0]["post_id"] == 5
+    assert controller.draws == ()
+
+
 # --- deterministic seeded streams -------------------------------------------------------------
 
 

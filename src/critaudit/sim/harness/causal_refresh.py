@@ -168,6 +168,32 @@ class CausalRefreshController:
     def has_stratum(self, agent_id: int, round_id: int) -> bool:
         return (agent_id, round_id) in self._stratum_by_agent_round
 
+    def assert_no_pending_exposure(
+        self, agent_id: int, round_id: int, posts: tuple
+    ) -> None:
+        """Fail closed if a served feed exposes a registered parent to its
+        assigned recipient while that recipient's stratum is still undrawn.
+
+        The frame's zero-prior-exposure premise is verified pre-draw by the
+        eligibility evidence; this guard closes the runtime window between that
+        verification and the stratum draw (e.g. an organic refresh in an
+        unregistered round serving the future experimental parent)."""
+        pending_parents = {
+            pair.parent_item_id
+            for pair in self._frame.candidate_pairs
+            if pair.agent_id == agent_id
+            and pair.stratum_id not in self._drawn_strata
+        }
+        if not pending_parents:
+            return
+        served = {post_item_id(post) for post in posts}
+        leaked = pending_parents & served
+        if leaked:
+            raise ValueError(
+                f"isolation breach: registered parent(s) {sorted(leaked)!r} "
+                f"served to recipient {agent_id} in round {round_id} before "
+                f"the stratum draw (fail-closed)")
+
     def _check_frame_unchanged(self) -> None:
         if sampling_frame_sha256(self._frame) != self._frame_sha256:
             raise ValueError(
@@ -302,8 +328,16 @@ async def apply_causal_refresh(base_refresh, platform, controller, agent_id):
     action inline (no concurrent refreshes on one platform instance).
     """
     round_id = int(platform.sandbox_clock.time_step)
-    if controller is None or not controller.has_stratum(agent_id, round_id):
+    if controller is None:
         return await base_refresh(agent_id)
+    if not controller.has_stratum(agent_id, round_id):
+        result = await base_refresh(agent_id)
+        if isinstance(result, dict) and result.get("success") is True and (
+            "posts" in result
+        ):
+            controller.assert_no_pending_exposure(
+                agent_id, round_id, tuple(result["posts"]))
+        return result
 
     utils = platform.pl_utils
     had_instance_record = "_record_trace" in utils.__dict__
