@@ -1,8 +1,19 @@
-# Causal probe — pre-authorization writedown (Tasks 3–7C)
+# Causal probe — pre-authorization writedown (Tasks 3–7C + owner-review repairs)
 
-**Date:** 2026-07-22 · **Branch:** `stage2-causal-probe-freeze` · **Plan:** `docs/superpowers/plans/2026-07-22-oasis-causal-probe.md`
-**Freeze commit:** `14fc14a` (Task 7B) plus the commit introducing this writedown, which completes the executable freeze; the final HEAD is recorded in the Task-8 handoff.
+**Dates:** 2026-07-22 (Tasks 2C–7C, nine commits `4e8a77b..a054868`) and 2026-07-23 (owner-review repairs, commits `de550cb`, `f43a915`, `f033ab1`, plus this writedown update) · **Branch:** `stage2-causal-probe-freeze` · **Plan:** `docs/superpowers/plans/2026-07-22-oasis-causal-probe.md`
+**Freeze commit:** the commit introducing this writedown update completes the repaired executable freeze; the final HEAD is recorded in the Task-8 handoff.
 **Status: pre-authorization. The Task-8 owner stop is binding. No scientific, LLM, GPU, or provider-backed run has occurred or is authorized by anything below.**
+
+## 0. Owner review 2026-07-23 — six findings, all repaired
+
+The first Task-8 handoff (at `a054868`) was rejected with six findings; each was verified against the code and repaired test-first:
+
+1. **`--execute` did not enforce the banked hashes before its first draw** → `--execute` now requires the banked dry-run manifest file (written by `--dry-run`); the frozen frame hash is checked against it up front, a dedicated pre-draw verification session must recreate the banked eligibility-evidence hash before any draw anywhere, and every live session enforces the same evidence hash pre-draw inside the bridge (`f033ab1`).
+2. **The gate could PASS forged or missing structural evidence** → the gate now re-verifies every structural claim from primary evidence: complete run ledgers re-estimated through the production estimator, byte-hash chains against the banked manifest (frames reconstructed from canonical bytes and round-tripped), marker cells re-aggregated, and the chi peak re-located; forgery or absence raises, and `structural_failures` is 0 by construction whenever the gate returns (`f033ab1`; forgery power checks in `tests/test_causal_probe_runner.py`).
+3. **Refresh isolation had a fail-open case** — an organic refresh at an unregistered round could serve a registered recipient its future experimental parent with no guard → `assert_no_pending_exposure` on the controller, routed through the platform wrapper for every unregistered refresh (`de550cb`).
+4. **The power simulation and execution used different joint randomization laws** → power is re-banked as the probability that the gate's own statistic (per-cell mean of 12 single-realization estimates on freshly drawn schedules) passes the scientific clauses, computed exactly via sufficient statistics and cross-checked against an independent brute-force replay of the joint law (`f43a915`; §2).
+5. **Generator truth was absent from the future result artifact** → the execute artifact now records `R_plant`, hidden `R_gen_frame`, and the canonical potential-response-schedule hash per run, in the artifact only — never in the gate's inputs (`f033ab1`).
+6. **Commit count** — the first handoff claimed ten commits for Tasks 2C–7C; the correct count was nine. Corrected here and in the handoff.
 
 ## 1. What was built (Tasks 3–7B)
 
@@ -14,20 +25,23 @@
 - **Task 7A** (`232b404`): result-blind constants frozen before generation (coverage ≥ 0.95, mean full width ≤ 0.10, power ≥ 0.80, 200k replicates, Wilson-99% half-width ≤ 0.003, seed registries pairwise disjoint); exact-selector Monte Carlo via the sufficient statistic `K = Bin(M1, 0.2) + Bin(M2, 0.4)` (the exact law of the frozen selector; power-checked in-tests against an independent per-stratum replay); banked artifact reproduces byte-identically.
 - **Task 7B** (`14fc14a`): dormant recoverability runner — frozen gate clauses, canonical manifest, `--dry-run` hash preflight through root creation only, `--execute` guarded behind the Task-8 owner stop and reachable only through the scripted and marker controls (no provider/LLM import surface; AST-pinned).
 
-## 2. Power freeze (banked, $0)
+## 2. Power freeze (banked, $0; re-banked 2026-07-23 under the aligned law)
 
 - Artifact: `results/s4_causal_probe/2026-07-22_power_calculation.json`
-- SHA-256: `7e7086f8ca8bb868b6240c602848ec5c15ccd6c32681d3182d90bdf5c23596fb` (frozen in `causal_probe_spec.py`; byte-reproduced three times, including after post-freeze refactors)
-- **Selected support: 8192 parents × 4 recipients (32,768 pairs; 16,384 strata).** First candidate in the frozen order to pass every cell: worst-cell mean full CI width 0.099 (plant 1.30) vs the 0.10 ceiling; coverage ≥ 0.95 in all six cells; power 1.000; zero structural failures. All 23 smaller candidates fail the width criterion (measured, recorded per cell in the artifact).
+- SHA-256: `b4091ab19cbffc90b6e508b9495fc147ad5a23e24b001148aa245054f63db660` (frozen in `causal_probe_spec.py`; byte-reproduced after re-banking)
+- **Aligned joint law (review F4):** banked power is the probability that the gate's own statistic — the per-cell mean of 12 SINGLE-realization estimates on freshly drawn potential-response schedules — passes strict ordering, exactly-one-crossing, and the near-crossing error bound, under the exact frozen selector. Computed via sufficient statistics (per-stratum live counts Multinomial, included counts Binomial) at 200k grid replicates, cross-checked in-tests against an independent brute-force replay. Schedules for the power computation come from a dedicated stream; the held-out recoverability registry is never inspected (AST-enforced).
+- **Selected support: 8192 parents × 4 recipients (32,768 pairs; 16,384 strata) — unchanged by the re-bank.** First candidate in the frozen order to pass every cell: worst-cell mean full CI width 0.099 (plant 1.30) vs the 0.10 ceiling; coverage ≥ 0.95 in all six cells; aligned-law power 1.000 (all three clause rates 1.000; Wilson half-width 1.7e-5); zero structural failures. All 23 smaller candidates fail the width criterion (measured, recorded per cell in the artifact). The pre-repair fixed-schedule cohort diagnostics remain in the artifact as descriptive records under `fixed_schedule_cohorts`.
 - Deterministic worst-case variance bound imported from the production estimator (never reimplemented).
 
 ## 3. Full-scale dry-run preflight (measured)
 
 - Command: `python -m critaudit.experiments.causal_probe_recoverability --dry-run --power-artifact results/s4_causal_probe/2026-07-22_power_calculation.json`
-- Dry-run manifest SHA-256: `b4d5f6a77ab491229b00e1f68c458a06438c7b19ceff346c36e3f086b41c4414`
+- Banked dry-run manifest SHA-256 (2026-07-23, post-repair): `3553d9467edef2bf5fd3bee67da5ee46d0cd93801abc1cfe47f0d9092b0f4d42` — the canonical manifest file is now WRITTEN by `--dry-run` (`dryrun_manifest.json`; durable copy at `~/crowd-crit-runs/s4_causal_probe/2026-07-23_dryrun_manifest.json`).
 - Frame SHA-256: `045bd40c8d36cbebe642c613de484ab439e7607a9d3de61e4235866836b63182`
 - Eligibility-evidence SHA-256: `9980fbc145d5deb293ae982c2426eadbd5438e01beaf97ab70680db073b2556f`
-- Wall time: ≈ 44 minutes at the full selected support (24,578 sign-ups; 16,386 reply-layout posts; canonical evidence over 32,768 pairs; 512 marker roots). Teardown before any draw, verified in the pre-draw databases: 0 refresh trace rows, 0 comments, no result artifact. `--execute` must reproduce these exact frame/evidence hashes before the first draw or fail closed.
+- The frame and evidence hashes reproduced **byte-identically across two independent full-scale dry-runs** (2026-07-22 pre-repair and 2026-07-23 post-repair); the manifest hash changed only because it embeds the re-banked power-artifact hash.
+- Wall time: ≈ 44 minutes per full-scale dry-run at the selected support (24,578 sign-ups; 16,386 reply-layout posts; canonical evidence over 32,768 pairs; 512 marker roots). Teardown before any draw, verified in the pre-draw databases both times: 0 refresh trace rows, 0 comments, no result artifact.
+- **Execute-side enforcement (review F1):** `--execute` now REQUIRES `--manifest <banked dry-run manifest>`; it checks the frozen frame hash against the manifest up front, recreates the banked evidence hash in a dedicated pre-draw verification session before any draw anywhere, and enforces the same evidence hash pre-draw inside every live session. **The plan's registered Task-8 command therefore needs `--manifest` appended at authorization time — an owner amendment to the plan text, flagged here rather than made unilaterally.**
 
 ## 4. Wall-time forecast for the Task-8 grid (measured basis — owner decision input)
 
@@ -42,11 +56,11 @@ Per reply session forecast (sign-ups + 16,386 creations + 16,384 refreshes + up 
 
 This forecast is a substrate-latency fact (the channel's polling design), not a scientific gate. Whether ~4 days of unattended wall time fits the ratified budget gate is an **owner call at Task 8**; the alternatives (patching the channel's poll interval, sessionizing differently, or treating the cost as a budget-gate failure → Branch B) all require ratification and are **not** exercised here.
 
-## 5. Verification state
+## 5. Verification state (post-repair)
 
-- Focused causal suite (12 files): **311 passed** (spec, records, validation, estimator, refresh incl. full-platform session, scripted control incl. bridge, marker control incl. bridge, firewalls incl. `python -O`, power, runner, pilot schedule, harness export).
-- Whole-repo non-slow suite at the freeze tree: **506 passed, 2 registered skips, 44 deselected slow** (`pytest -q -m "not slow"`), `git diff --check` clean.
-- Whole-branch review (Task 7C) against the ratified design: three defects found and fixed pre-commit (power-artifact path resolution off by one directory; missing cross-session evidence-hash fail-closed guard in `--execute`; cohort alignment by index rather than schedule seed under structural failures). No Critical/Important findings open.
+- Whole-repo non-slow suite at the repaired tree: **521 passed, 2 registered skips, 44 deselected slow** (`pytest -q -m "not slow"`), `git diff --check` clean. Focused 12-file causal battery: **326 passed**.
+- The focused causal battery now includes the gate forgery power checks (six forged/missing-evidence variants each raise), the bridge banked-evidence enforcement (a wrong hash fails closed before the first draw, verified against the session database), the pending-exposure isolation guard, the canonical frame/manifest byte round-trips, and the brute-force cross-check of the aligned power law.
+- Whole-branch review (Task 7C, pre-repair) found and fixed three defects pre-commit (power-artifact path resolution off by one directory; a weaker cross-session evidence guard, since superseded by banked-hash enforcement; cohort alignment by index rather than schedule seed). The 2026-07-23 owner review found the six findings in §0; all are repaired and test-locked.
 
 ## 6. Boundaries (unchanged)
 
