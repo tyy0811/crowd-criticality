@@ -277,7 +277,7 @@ def test_power_simulation_never_inspects_held_out_schedules():
         tree = ast.parse(handle.read(), filename=path)
     simulation_functions = {
         "build_power_frame", "build_power_schedule",
-        "simulate_fixed_schedule", "simulate_power_grid",
+        "simulate_fixed_schedule", "simulate_grid_power", "simulate_power_grid",
     }
     seen = set()
     for node in ast.walk(tree):

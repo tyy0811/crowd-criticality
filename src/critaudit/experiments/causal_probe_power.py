@@ -77,6 +77,7 @@ __all__ = (
     "candidate_order",
     "select_smallest_sufficient_support",
     "simulate_fixed_schedule",
+    "simulate_grid_power",
     "simulate_power_grid",
     "write_canonical_json",
     "write_power_artifact",
@@ -109,6 +110,7 @@ POWER_SCHEDULE_SEEDS = (
 # Namespaced SeedSequence streams
 POWER_STREAM_SCHEDULE = 931
 POWER_STREAM_REPLICATES = 932
+POWER_STREAM_GRID = 933
 
 _WALD_Z = 1.96
 
@@ -298,11 +300,75 @@ def simulate_fixed_schedule(frame: SamplingFrame, truth: ControlTruth,
     }
 
 
+def simulate_grid_power(parent_count: int, recipients_per_parent: int,
+                        plant_r_grid, frames_per_cell: int,
+                        replicates: int, seed: int):
+    """Power under the ALIGNED joint randomization law — the law the executed
+    grid actually realizes: per replicate, each cell draws `frames_per_cell`
+    FRESH potential-response schedules and exactly ONE categorical
+    selection/treatment realization per schedule; the cell statistic is the mean
+    of those single-realization estimates, exactly as the recoverability gate
+    aggregates. Sufficient statistics keep this exact: a 2-pair stratum has
+    (0,1,2) live pairs with Multinomial((1-q)^2, 2q(1-q), q^2) counts, and the
+    included-live count per frame is Binomial(M1, pi) + Binomial(M2, 2*pi).
+    Schedules here are drawn from a dedicated stream, never from the held-out
+    recoverability registry."""
+    plant_r_grid = tuple(plant_r_grid)
+    strata = parent_count * recipients_per_parent // PAIRS_PER_SELECTION_STRATUM
+    inclusion = PAIR_SELECTION_PROBABILITY * TREATMENT_PROBABILITY
+    weight = 1.0 / inclusion / parent_count
+    replicates = int(replicates)
+    rng = np.random.default_rng(
+        np.random.SeedSequence(int(seed), spawn_key=(POWER_STREAM_GRID,)))
+
+    cell_means = np.empty((len(plant_r_grid), replicates))
+    for cell_index, plant_r in enumerate(plant_r_grid):
+        q = float(plant_r) / recipients_per_parent
+        if not 0.0 <= q <= 1.0:
+            raise ValueError("plant grid implies an out-of-range response probability")
+        pvals = ((1.0 - q) ** 2, 2.0 * q * (1.0 - q), q * q)
+        frame_means = np.zeros(replicates)
+        for _ in range(int(frames_per_cell)):
+            live = rng.multinomial(strata, pvals, size=replicates)
+            included = (
+                rng.binomial(live[:, 1], inclusion)
+                + rng.binomial(live[:, 2], 2.0 * inclusion))
+            frame_means += included * weight
+        cell_means[cell_index] = frame_means / int(frames_per_cell)
+
+    increasing = np.all(cell_means[:-1] < cell_means[1:], axis=0)
+    below = cell_means < 1.0
+    crossing_count = np.abs(np.diff(below.astype(int), axis=0)).sum(axis=0)
+    exactly_one_crossing = crossing_count == 1
+    near_ok = np.ones(replicates, dtype=bool)
+    for cell_index, plant_r in enumerate(plant_r_grid):
+        if plant_r in NEAR_CROSSING_PLANTS:
+            near_ok &= (
+                np.abs(cell_means[cell_index] - plant_r) <= NEAR_CRITICAL_ABS_TOL)
+    passed = increasing & exactly_one_crossing & near_ok
+    grid_power = float(passed.mean())
+    _, _, wilson_half = _wilson_interval(
+        float(passed.sum()), replicates, MC_WILSON_CONFIDENCE)
+    return {
+        "grid_power": grid_power,
+        "grid_power_wilson_half_width": wilson_half,
+        "grid_power_replicates": replicates,
+        "frames_per_cell": int(frames_per_cell),
+        "clause_pass_rates": {
+            "strictly_increasing": float(increasing.mean()),
+            "exactly_one_crossing": float(exactly_one_crossing.mean()),
+            "near_crossing_errors_ok": float(near_ok.mean()),
+        },
+    }
+
+
 def simulate_power_grid(parent_count: int, recipients_per_parent: int,
                         plant_r_grid, potential_schedule_seeds,
                         replicates: int, seed: int):
     """Fixed-schedule simulations for every registered plant and predeclared
-    schedule seed, plus held-out cohort ordering/crossing/error evaluation."""
+    schedule seed (banking coverage/width for the CI machinery), fixed-schedule
+    cohort DIAGNOSTICS, and the banked power under the aligned joint law
+    (`simulate_grid_power` — the law the executed grid realizes)."""
     plant_r_grid = tuple(plant_r_grid)
     schedule_seeds = tuple(potential_schedule_seeds)
     structural_failures = 0
@@ -392,13 +458,23 @@ def simulate_power_grid(parent_count: int, recipients_per_parent: int,
             "passed": passed,
         })
 
+    aligned = simulate_grid_power(
+        parent_count, recipients_per_parent, plant_r_grid,
+        HELD_OUT_FRAMES_PER_CELL, replicates, seed)
     return {
         "parent_count": int(parent_count),
         "recipients_per_parent": int(recipients_per_parent),
         "total_pairs": int(parent_count) * int(recipients_per_parent),
         "cells": cells,
-        "cohorts": cohorts,
-        "power": passing / len(schedule_seeds) if schedule_seeds else 0.0,
+        "fixed_schedule_cohorts": cohorts,
+        "fixed_schedule_cohort_pass_fraction": (
+            passing / len(schedule_seeds) if schedule_seeds else 0.0),
+        "power": aligned["grid_power"],
+        "grid_power": aligned["grid_power"],
+        "grid_power_wilson_half_width": aligned["grid_power_wilson_half_width"],
+        "grid_power_replicates": aligned["grid_power_replicates"],
+        "grid_power_frames_per_cell": aligned["frames_per_cell"],
+        "grid_power_clause_pass_rates": aligned["clause_pass_rates"],
         "structural_failures": structural_failures,
         "failure_notes": failure_notes,
     }
@@ -408,6 +484,8 @@ def _candidate_passes(result):
     if result["structural_failures"] != 0:
         return False
     if result["power"] < TARGET_POWER:
+        return False
+    if result.get("grid_power_wilson_half_width", float("inf")) > MC_MAX_HALF_WIDTH:
         return False
     for cell in result["cells"]:
         if "coverage" not in cell:

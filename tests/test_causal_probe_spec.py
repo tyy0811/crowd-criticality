@@ -69,7 +69,7 @@ def test_power_freeze_matches_the_banked_artifact():
         digest = hashlib.sha256(handle.read()).hexdigest()
     assert digest == spec.POWER_ARTIFACT_SHA256
     assert spec.POWER_ARTIFACT_SHA256 == (
-        "7e7086f8ca8bb868b6240c602848ec5c15ccd6c32681d3182d90bdf5c23596fb")
+        "b4091ab19cbffc90b6e508b9495fc147ad5a23e24b001148aa245054f63db660")
 
 
 def test_required_assignment_fields_are_an_exact_immutable_tuple():

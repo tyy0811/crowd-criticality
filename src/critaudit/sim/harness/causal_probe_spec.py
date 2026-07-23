@@ -55,12 +55,14 @@ BRANCH_B_TEXT = (
     "to observable knob-space and null confirmation without `n` placement or H1b."
 )
 
-# Task-7A power freeze (2026-07-22): the smallest sufficient support selected by the
-# banked exact-selector power calculation, and the SHA-256 of that artifact. The
-# selection criteria were frozen result-blind BEFORE the artifact was generated and
-# were not changed after reading it.
+# Task-7A power freeze (2026-07-22; re-banked 2026-07-23 under the ALIGNED joint
+# randomization law after owner review — power is now the probability that the
+# gate's own statistic passes under the law the executed grid realizes): the
+# smallest sufficient support selected by the banked exact-selector power
+# calculation, and the SHA-256 of that artifact. The selection criteria were
+# frozen result-blind BEFORE each banking and were not changed after reading.
 SELECTED_SUPPORT = {"parent_count": 8192, "recipients_per_parent": 4}
 POWER_ARTIFACT_PATH = "results/s4_causal_probe/2026-07-22_power_calculation.json"
 POWER_ARTIFACT_SHA256 = (
-    "7e7086f8ca8bb868b6240c602848ec5c15ccd6c32681d3182d90bdf5c23596fb"
+    "b4091ab19cbffc90b6e508b9495fc147ad5a23e24b001148aa245054f63db660"
 )

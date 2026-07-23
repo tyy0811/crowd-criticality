@@ -190,7 +190,7 @@ def test_simulate_matches_bruteforce_exact_selector():
     assert module_sd == pytest.approx(float(estimates.std()), rel=0.05)
 
 
-# --- grid, cohorts, and support selection ------------------------------------------------------
+# --- grid, aligned-law power, and support selection --------------------------------------------
 
 
 def test_simulate_power_grid_structure():
@@ -203,15 +203,59 @@ def test_simulate_power_grid_structure():
     for cell, plant_r in zip(grid["cells"], PLANT_R_GRID):
         assert cell["plant_r"] == plant_r
         assert len(cell["per_schedule"]) == 3
-    assert len(grid["cohorts"]) == 3
-    for cohort in grid["cohorts"]:
+    # the fixed-schedule cohort diagnostics remain DESCRIPTIVE records
+    assert len(grid["fixed_schedule_cohorts"]) == 3
+    for cohort in grid["fixed_schedule_cohorts"]:
         assert set(cohort) >= {
             "schedule_seed", "mean_estimates", "strictly_increasing",
             "crossing_count", "crossing_interval", "near_crossing_errors_ok",
             "passed",
         }
+    # power itself is banked under the ALIGNED joint law
     assert 0.0 <= grid["power"] <= 1.0
+    assert grid["power"] == grid["grid_power"]
+    assert grid["grid_power_replicates"] == 5_000
+    assert grid["grid_power_wilson_half_width"] > 0.0
     assert grid["structural_failures"] == 0
+
+
+def test_grid_power_uses_the_aligned_joint_law():
+    """Power must be the probability that the GATE'S OWN statistic — the per-cell
+    mean of 12 SINGLE-realization estimates on freshly drawn schedules — passes
+    the scientific clauses. Cross-check the module's sufficient-statistic grid
+    sampler against an independent brute-force replay of the joint law."""
+    from critaudit.experiments.causal_probe_power import simulate_grid_power
+
+    parent_count, recipients = 64, 4
+    result = simulate_grid_power(parent_count, recipients, PLANT_R_GRID,
+                                 12, 50_000, 20260722)
+    assert set(result) >= {"grid_power", "grid_power_wilson_half_width",
+                          "grid_power_replicates", "clause_pass_rates"}
+
+    rng = np.random.default_rng(99)
+    strata = parent_count * recipients // 2
+    replicates = 50_000
+    passes = 0
+    for _ in range(replicates):
+        means = []
+        for plant_r in PLANT_R_GRID:
+            q = plant_r / recipients
+            live = rng.multinomial(
+                strata, ((1 - q) ** 2, 2 * q * (1 - q), q * q), size=12)
+            included = rng.binomial(live[:, 1], 0.2) + rng.binomial(
+                live[:, 2], 0.4)
+            means.append(float((included * 5.0 / parent_count).mean()))
+        increasing = all(a < b for a, b in zip(means, means[1:]))
+        crossings = sum(
+            1 for a, b in zip(means, means[1:])
+            if (a < 1.0 <= b) or (a >= 1.0 > b))
+        near_ok = all(
+            abs(mean - plant_r) <= 0.05
+            for mean, plant_r in zip(means, PLANT_R_GRID)
+            if plant_r in NEAR_CROSSING_PLANTS)
+        passes += int(increasing and crossings == 1 and near_ok)
+    brute = passes / replicates
+    assert result["grid_power"] == pytest.approx(brute, abs=0.02)
 
 
 def _fake_result(parent_count, recipients, *, coverage=0.99, width=0.05,
@@ -230,6 +274,8 @@ def _fake_result(parent_count, recipients, *, coverage=0.99, width=0.05,
             for plant_r in PLANT_R_GRID
         ],
         "power": power,
+        "grid_power": power,
+        "grid_power_wilson_half_width": 0.001,
         "structural_failures": failures,
     }
 
