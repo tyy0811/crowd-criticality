@@ -189,9 +189,65 @@ def test_exact_public_surface_is_frozen():
         "RReplyEstimate",
         "sampling_frame_to_bytes",
         "sampling_frame_sha256",
+        "sampling_frame_from_bytes",
         "frame_eligibility_evidence_to_bytes",
         "frame_eligibility_evidence_sha256",
     )
+
+
+def test_sampling_frame_round_trips_through_canonical_bytes():
+    frame = records.SamplingFrame(
+        frame_id="frame:roundtrip",
+        parent_records=(
+            records.ParentEligibility("post:1", author_agent_id=0, created_round=0),
+            records.ParentEligibility("post:2", author_agent_id=1, created_round=0),
+        ),
+        excluded_recipient_agent_ids=(0, 1, 9),
+        candidate_pairs=(
+            records.CandidatePair(
+                pair_id="pair:1", parent_item_id="post:1", agent_id=2, round_id=1,
+                stratum_id="agent:2:round:1", selection_probability=0.4,
+                treatment_probability=0.5, parent_first_readable_round=1,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+            records.CandidatePair(
+                pair_id="pair:2", parent_item_id="post:2", agent_id=2, round_id=1,
+                stratum_id="agent:2:round:1", selection_probability=0.4,
+                treatment_probability=0.5, parent_first_readable_round=1,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+        ),
+    )
+    payload = records.sampling_frame_to_bytes(frame)
+    recovered = records.sampling_frame_from_bytes(payload)
+    assert type(recovered) is records.SamplingFrame
+    assert recovered == frame
+    assert records.sampling_frame_to_bytes(recovered) == payload
+
+
+def test_sampling_frame_from_bytes_fails_closed():
+    with pytest.raises(ValueError):
+        records.sampling_frame_from_bytes(b"not json")
+    with pytest.raises(ValueError):
+        records.sampling_frame_from_bytes(b'{"frame_id": "x"}\n')
+    # non-canonical but JSON-equivalent bytes must be rejected, not normalized
+    frame_bytes = records.sampling_frame_to_bytes(
+        records.SamplingFrame(
+            frame_id="frame:strict",
+            parent_records=(
+                records.ParentEligibility("post:1", 0, 0),
+                records.ParentEligibility("post:2", 1, 0),
+            ),
+            excluded_recipient_agent_ids=(),
+            candidate_pairs=(
+                records.CandidatePair(
+                    "pair:1", "post:1", 2, 1, "agent:2:round:1", 0.4, 0.5, 1, 0,
+                    True),
+                records.CandidatePair(
+                    "pair:2", "post:2", 3, 1, "agent:3:round:1", 0.4, 0.5, 1, 0,
+                    True),
+            ),
+        ))
+    with pytest.raises(ValueError, match="canonical"):
+        records.sampling_frame_from_bytes(b" " + frame_bytes)
 
 
 @pytest.mark.parametrize(

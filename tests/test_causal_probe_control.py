@@ -280,3 +280,26 @@ def test_scripted_oasis_control_bridge(tmp_path):
             seed=7,
             database_path=str(tmp_path / "control_c.db"),
         )
+
+    # banked-evidence enforcement (review F1): the correct hash passes; a wrong
+    # hash fails closed BEFORE the first draw (no refresh trace row is written)
+    import sqlite3
+
+    replay = run_scripted_oasis_control(
+        frame, truth, run_id="run:control:1",
+        seed_stream_id=CONTROL_SEED_STREAM, seed=7,
+        database_path=str(tmp_path / "control_d.db"),
+        expected_evidence_sha256=run.eligibility_evidence_sha256,
+    )
+    assert replay.eligibility_evidence_sha256 == run.eligibility_evidence_sha256
+    with pytest.raises(ValueError, match="BEFORE the first draw"):
+        run_scripted_oasis_control(
+            frame, truth, run_id="run:control:3",
+            seed_stream_id=CONTROL_SEED_STREAM, seed=7,
+            database_path=str(tmp_path / "control_e.db"),
+            expected_evidence_sha256="0" * 64,
+        )
+    con = sqlite3.connect(str(tmp_path / "control_e.db"))
+    assert con.execute(
+        "SELECT COUNT(*) FROM trace WHERE action = 'refresh'").fetchone()[0] == 0
+    con.close()

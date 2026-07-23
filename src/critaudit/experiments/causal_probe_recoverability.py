@@ -37,6 +37,7 @@ from critaudit.experiments.causal_probe_power import (
 )
 from critaudit.sim.controls.causal_probe_control import (
     CONTROL_SEED_STREAM,
+    ScriptedControlRun,
     run_scripted_oasis_control,
 )
 from critaudit.sim.controls.causal_probe_marker_control import (
@@ -46,6 +47,7 @@ from critaudit.sim.controls.causal_probe_marker_control import (
     MARKER_ROUNDS,
     MARKER_SEED_STREAM,
     MARKER_SEEDS,
+    MarkerGridCell,
     aggregate_marker_cell,
     locate_chi_peak,
     require_disjoint_manifests,
@@ -56,13 +58,17 @@ from critaudit.sim.harness import causal_probe_spec as spec
 from critaudit.sim.harness.causal_probe import estimate_r_reply
 from critaudit.sim.harness.causal_probe_records import (
     frame_eligibility_evidence_sha256,
+    sampling_frame_from_bytes,
     sampling_frame_sha256,
+    sampling_frame_to_bytes,
 )
+from critaudit.sim.harness.causal_probe_validation import validate_sampling_frame
 
 __all__ = (
     "RecoverabilityManifest",
     "build_recoverability_manifest",
     "evaluate_recoverability_gate",
+    "load_recoverability_manifest",
     "main",
     "run_dry_run",
     "run_execute",
@@ -143,7 +149,7 @@ def _resolve_power_artifact_path(manifest: RecoverabilityManifest) -> str:
     return os.path.join(repo_root, manifest.power_artifact_path)
 
 
-def _validate_gate_inputs(cell_results, marker_cells, chi_peak, manifest):
+def _validate_manifest(manifest):
     if type(manifest) is not RecoverabilityManifest:
         raise ValueError("gate requires a RecoverabilityManifest")
     if manifest.schema_version != spec.SCHEMA_VERSION:
@@ -159,48 +165,159 @@ def _validate_gate_inputs(cell_results, marker_cells, chi_peak, manifest):
         raise ValueError("manifest Branch-B text is not the frozen text")
     if manifest.power_artifact_sha256 != spec.POWER_ARTIFACT_SHA256:
         raise ValueError("manifest power artifact sha256 drifted (fail-closed)")
+    for field in ("frame_sha256s", "eligibility_evidence_sha256s"):
+        values = getattr(manifest, field)
+        if len(values) != 1 or not all(
+            isinstance(value, str) and len(value) == 64
+            and all(ch in "0123456789abcdef" for ch in value)
+            for value in values
+        ):
+            raise ValueError(
+                f"manifest {field} must carry exactly one lowercase sha256 hex "
+                f"digest (fail-closed)")
     require_disjoint_seed_sets(manifest.seeds, manifest.marker_seeds)
 
+
+def _canonical_manifest_bytes(manifest) -> bytes:
+    payload = asdict(manifest)
+    for key in ("frame_sha256s", "eligibility_evidence_sha256s",
+                "plant_r_grid", "seeds", "marker_seeds"):
+        payload[key] = list(payload[key])
+    return (json.dumps(payload, allow_nan=False, ensure_ascii=False,
+                       separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+
+
+def load_recoverability_manifest(path: str) -> RecoverabilityManifest:
+    """Load and fail-closed-validate a banked dry-run manifest file."""
+    with open(path, "rb") as handle:
+        data = handle.read()
+    try:
+        payload = json.loads(data)
+    except ValueError as exc:
+        raise ValueError(f"manifest file is not valid JSON: {exc}")
+    try:
+        manifest = RecoverabilityManifest(
+            schema_version=payload["schema_version"],
+            power_artifact_path=payload["power_artifact_path"],
+            power_artifact_sha256=payload["power_artifact_sha256"],
+            frame_sha256s=tuple(payload["frame_sha256s"]),
+            eligibility_evidence_sha256s=tuple(
+                payload["eligibility_evidence_sha256s"]),
+            plant_r_grid=tuple(payload["plant_r_grid"]),
+            seeds=tuple(payload["seeds"]),
+            marker_seeds=tuple(payload["marker_seeds"]),
+            branch_b_text=payload["branch_b_text"],
+        )
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"manifest file has a drifted schema: {exc}")
+    if _canonical_manifest_bytes(manifest) != data:
+        raise ValueError("manifest file bytes are not canonical (fail-closed)")
+    _validate_manifest(manifest)
+    return manifest
+
+
+def _verify_cell_results(cell_results, manifest):
+    """Re-verify EVERY structural claim from primary evidence (review F2): the
+    complete per-run ledgers, byte-hash chains, and estimate reproduction. A
+    summary without evidence, or forged evidence, raises — it can never PASS."""
     results = tuple(cell_results)
     if len(results) != len(PLANT_R_GRID):
         raise ValueError("gate requires exactly one cell result per registered plant")
+    frame_sha = manifest.frame_sha256s[0]
+    evidence_sha = manifest.eligibility_evidence_sha256s[0]
+    frame = None
+    frame_bytes = None
+    means = []
     for cell, plant_r in zip(results, PLANT_R_GRID):
         if cell.get("plant_r") != plant_r:
             raise ValueError("cell results are out of registered grid order")
+        runs = tuple(cell.get("runs", ()))
         estimates = tuple(cell.get("estimates", ()))
-        if len(estimates) != len(RECOVERABILITY_SEEDS):
+        if len(runs) != len(RECOVERABILITY_SEEDS) or len(estimates) != len(runs):
             raise ValueError(
-                "every cell needs one estimate per registered recoverability seed")
+                "every cell needs one complete run and estimate per registered "
+                "recoverability seed (fail-closed)")
+        for position, run in enumerate(runs):
+            if type(run) is not ScriptedControlRun:
+                raise ValueError(
+                    "cell results must carry complete ScriptedControlRun "
+                    "evidence (fail-closed)")
+            if hashlib.sha256(run.frame_bytes).hexdigest() != run.frame_sha256:
+                raise ValueError("run frame bytes do not hash to their claimed "
+                                 "sha256 (fail-closed)")
+            if run.frame_sha256 != frame_sha:
+                raise ValueError(
+                    "run frame hash does not equal the banked manifest frame "
+                    "hash (fail-closed)")
+            if hashlib.sha256(run.eligibility_evidence_bytes).hexdigest() != (
+                run.eligibility_evidence_sha256
+            ):
+                raise ValueError("run evidence bytes do not hash to their "
+                                 "claimed sha256 (fail-closed)")
+            if run.eligibility_evidence_sha256 != evidence_sha:
+                raise ValueError(
+                    "run evidence hash does not equal the banked manifest "
+                    "evidence hash (fail-closed)")
+            if frame is None:
+                frame_bytes = run.frame_bytes
+                frame = sampling_frame_from_bytes(frame_bytes)
+                validate_sampling_frame(frame)
+                if sampling_frame_sha256(frame) != frame_sha:
+                    raise ValueError(
+                        "reconstructed frame does not hash to the manifest "
+                        "frame hash (fail-closed)")
+            elif run.frame_bytes != frame_bytes:
+                raise ValueError("runs carry non-identical frame bytes "
+                                 "(fail-closed)")
+            estimate = estimate_r_reply(
+                frame, run.draws, run.assignments, run.outcomes)
+            if estimate.estimate != estimates[position]:
+                raise ValueError(
+                    "reported estimate does not reproduce from the run's "
+                    "complete ledgers (fail-closed)")
         mean = math.fsum(estimates) / len(estimates)
         if not math.isclose(mean, cell.get("mean_r_reply"), rel_tol=1e-9,
                             abs_tol=1e-12):
             raise ValueError("cell mean does not reproduce from its estimates")
+        means.append(mean)
+    return results, means
 
+
+def _verify_marker_cells(marker_cells, chi_peak):
     cells = tuple(marker_cells)
     if len(cells) != len(PLANT_R_GRID):
         raise ValueError("gate requires exactly six aggregated marker cells")
     supports = set()
     for cell, plant_r in zip(cells, PLANT_R_GRID):
-        if cell.plant_r != plant_r:
-            raise ValueError("marker cells are out of registered grid order")
+        if type(cell) is not MarkerGridCell:
+            raise ValueError("marker cells must be MarkerGridCell records")
+        rebuilt = aggregate_marker_cell(plant_r, cell.seed_results)
+        if rebuilt != cell:
+            raise ValueError(
+                "marker cell does not reproduce from its own seed results "
+                "(fail-closed)")
         for result in cell.seed_results:
             supports.add(result.manifest.support_per_root)
     if len(supports) != 1:
         raise ValueError("marker cohort support is not equal across seeds/cells")
-    if chi_peak.seed_count != len(MARKER_SEEDS) or (
-        chi_peak.seed_argmax_consistency_count != chi_peak.seed_count
-    ):
-        raise ValueError("chi peak lacks full seed-argmax consistency")
-    return results, cells
+    if locate_chi_peak(cells) != chi_peak:
+        raise ValueError(
+            "chi peak does not reproduce from the marker cells (fail-closed)")
+    return cells
 
 
 def evaluate_recoverability_gate(cell_results, marker_cells, chi_peak, manifest):
     """Frozen PASS/FAIL clauses; scientific failures return FAIL, structural
-    violations raise. No clause or threshold changes after execution begins."""
-    results, cells = _validate_gate_inputs(
-        cell_results, marker_cells, chi_peak, manifest)
+    violations RAISE. Every structural claim is re-verified here from primary
+    evidence — complete run ledgers, byte-hash chains against the banked
+    manifest, marker re-aggregation, and peak re-location — so neither forged
+    nor missing evidence can reach a PASS (or launder a FAIL). The returned
+    `structural_failures` is therefore 0 by construction whenever the gate
+    returns at all. No clause or threshold changes after execution begins."""
+    _validate_manifest(manifest)
+    results, means = _verify_cell_results(cell_results, manifest)
+    _verify_marker_cells(marker_cells, chi_peak)
 
-    means = [cell["mean_r_reply"] for cell in results]
     monotonicity_passed = all(a < b for a, b in zip(means, means[1:]))
 
     crossings = [
@@ -241,8 +358,9 @@ def evaluate_recoverability_gate(cell_results, marker_cells, chi_peak, manifest)
         and chi_peak.neighbor_low <= crossing_interval[0]
         and crossing_interval[1] <= chi_peak.neighbor_high)
 
-    structural_failures = sum(
-        int(cell.get("structural_failures", 0)) for cell in results)
+    # 0 by construction: every structural claim was re-verified above and any
+    # problem raised instead of returning (see the docstring).
+    structural_failures = 0
 
     passed = bool(
         monotonicity_passed and crossing_resolved and near_passed
@@ -438,18 +556,20 @@ def run_dry_run(power_artifact_path: str, work_dir: str, *, support=None):
         frame_sha256s=(frame_sha,),
         eligibility_evidence_sha256s=(evidence_sha,),
     )
+    manifest_bytes = _canonical_manifest_bytes(manifest)
+    manifest_path = os.path.join(work_dir, "dryrun_manifest.json")
+    with open(manifest_path, "wb") as handle:
+        handle.write(manifest_bytes)
     manifest_json = asdict(manifest)
     for key in ("frame_sha256s", "eligibility_evidence_sha256s",
                 "plant_r_grid", "seeds", "marker_seeds"):
         manifest_json[key] = list(manifest_json[key])
-    manifest_bytes = (json.dumps(
-        manifest_json, allow_nan=False, ensure_ascii=False,
-        separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
     report = {
         "execute": False,
         "provider_paths_reachable": False,
         "support": dict(support),
         "manifest": manifest_json,
+        "manifest_path": manifest_path,
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
     }
     print(json.dumps(report, allow_nan=False, ensure_ascii=False,
@@ -460,27 +580,51 @@ def run_dry_run(power_artifact_path: str, work_dir: str, *, support=None):
 # --- the guarded execute path (dormant until Task-8 owner authorization) -----------------------
 
 
-def run_execute(power_artifact_path: str, output_path: str, work_dir=None):
+def run_execute(power_artifact_path: str, output_path: str, manifest_path: str,
+                work_dir=None):
     """The registered $0 scripted recoverability grid. DORMANT: running this
     requires the separate Task-8 owner authorization. Uses only the scripted
     full-platform control and the disjoint marker control; the sentinel model
-    raises on any LLM invocation."""
+    raises on any LLM invocation.
+
+    Banked-hash enforcement (review F1): the caller must supply the banked
+    dry-run manifest; the frozen frame hash is checked against it up front, a
+    dedicated pre-draw verification session must recreate the banked
+    eligibility-evidence hash BEFORE any draw anywhere, and every live session
+    additionally enforces the same evidence hash pre-draw inside the bridge."""
+    import asyncio
+
     if work_dir is None:
         work_dir = tempfile.mkdtemp(prefix="causal_probe_recoverability_")
     os.makedirs(work_dir, exist_ok=True)
+    manifest = load_recoverability_manifest(manifest_path)
     _load_verified_power_artifact(power_artifact_path)
     support = spec.SELECTED_SUPPORT
     frame = build_power_frame(
         support["parent_count"], support["recipients_per_parent"])
     frame_sha = sampling_frame_sha256(frame)
+    if frame_sha != manifest.frame_sha256s[0]:
+        raise ValueError(
+            "frozen frame does not recreate the banked manifest frame hash "
+            "(fail-closed)")
+    banked_evidence_sha = manifest.eligibility_evidence_sha256s[0]
+
+    # pre-draw verification session: recreate the banked evidence hash BEFORE
+    # any draw in any session, then tear down.
+    verification_db = os.path.join(work_dir, "predraw_verification.db")
+    verification_sha = asyncio.run(_predraw_reply_setup(frame, verification_db))
+    if verification_sha != banked_evidence_sha:
+        raise ValueError(
+            "pre-draw setup does not recreate the banked eligibility-evidence "
+            "hash — failing closed before the first draw")
 
     reply_cells = []
     cell_results = []
-    evidence_shas = set()
     reply_manifests = []
     for plant_r in PLANT_R_GRID:
         estimates = []
         runs = []
+        run_records = []
         for seed in RECOVERABILITY_SEEDS:
             truth = build_power_schedule(frame, plant_r, seed)
             database_path = os.path.join(
@@ -491,21 +635,27 @@ def run_execute(power_artifact_path: str, output_path: str, work_dir=None):
                 seed_stream_id=CONTROL_SEED_STREAM,
                 seed=seed,
                 database_path=database_path,
+                expected_evidence_sha256=banked_evidence_sha,
             )
             if run.frame_sha256 != frame_sha:
                 raise ValueError(
-                    "executed frame hash is not byte-identical to the frozen "
+                    "executed frame hash is not byte-identical to the banked "
                     "frame (fail-closed)")
-            if evidence_shas and run.eligibility_evidence_sha256 not in evidence_shas:
-                raise ValueError(
-                    "executed eligibility evidence hash drifted across sessions "
-                    "(fail-closed)")
-            evidence_shas.add(run.eligibility_evidence_sha256)
             estimate = estimate_r_reply(
                 frame, run.draws, run.assignments, run.outcomes)
             estimates.append(estimate.estimate)
             reply_manifests.append(run.manifest)
-            runs.append({
+            runs.append(run)
+            # generator truth for the future finding lock (review F5): R_plant,
+            # the hidden R_gen_frame, and the fixed potential-response schedule
+            # (by canonical hash) ride in the ARTIFACT only — the gate never
+            # consumes them.
+            schedule_bytes = (json.dumps(
+                [[row.pair_id, row.potential_response]
+                 for row in truth.potential_responses],
+                allow_nan=False, ensure_ascii=False, separators=(",", ":"))
+                + "\n").encode("utf-8")
+            run_records.append({
                 "manifest": asdict(run.manifest),
                 "frame_sha256": run.frame_sha256,
                 "eligibility_evidence_sha256": run.eligibility_evidence_sha256,
@@ -513,14 +663,23 @@ def run_execute(power_artifact_path: str, output_path: str, work_dir=None):
                 "assignments": [asdict(a) for a in run.assignments],
                 "outcomes": [asdict(o) for o in run.outcomes],
                 "estimate": asdict(estimate),
+                "schedule_seed": int(seed),
+                "r_plant": truth.r_plant,
+                "r_gen_frame": truth.r_gen_frame,
+                "potential_responses_sha256": hashlib.sha256(
+                    schedule_bytes).hexdigest(),
             })
         cell_results.append({
             "plant_r": plant_r,
             "mean_r_reply": math.fsum(estimates) / len(estimates),
             "estimates": tuple(estimates),
-            "structural_failures": 0,
+            "runs": tuple(runs),
         })
-        reply_cells.append({"plant_r": plant_r, "runs": runs})
+        reply_cells.append({
+            "plant_r": plant_r,
+            "r_gen_frames": [record["r_gen_frame"] for record in run_records],
+            "runs": run_records,
+        })
 
     marker_cells = []
     for plant_r in PLANT_R_GRID:
@@ -545,20 +704,26 @@ def run_execute(power_artifact_path: str, output_path: str, work_dir=None):
         marker_cells.append(aggregate_marker_cell(plant_r, seed_results))
     chi_peak = locate_chi_peak(tuple(marker_cells))
 
-    manifest = build_recoverability_manifest(
-        power_artifact_path,
-        frame_sha256s=(frame_sha,),
-        eligibility_evidence_sha256s=tuple(sorted(evidence_shas)),
-    )
     gate = evaluate_recoverability_gate(
         tuple(cell_results), tuple(marker_cells), chi_peak, manifest)
 
+    manifest_json = asdict(manifest)
+    for key in ("frame_sha256s", "eligibility_evidence_sha256s",
+                "plant_r_grid", "seeds", "marker_seeds"):
+        manifest_json[key] = list(manifest_json[key])
     artifact = {
         "schema_version": spec.SCHEMA_VERSION,
-        "manifest": {**asdict(manifest)},
+        "manifest": manifest_json,
+        "manifest_sha256": hashlib.sha256(
+            _canonical_manifest_bytes(manifest)).hexdigest(),
         "reply_cells": reply_cells,
         "cell_results": [
-            {**cell, "estimates": list(cell["estimates"])} for cell in cell_results
+            {
+                "plant_r": cell["plant_r"],
+                "mean_r_reply": cell["mean_r_reply"],
+                "estimates": list(cell["estimates"]),
+            }
+            for cell in cell_results
         ],
         "marker_cells": [asdict(cell) for cell in marker_cells],
         "chi_peak": asdict(chi_peak),
@@ -579,6 +744,8 @@ def main(argv=None) -> int:
     parser.add_argument("--power-artifact", required=True)
     parser.add_argument("--output", default=None,
                         help="result artifact path (execute only)")
+    parser.add_argument("--manifest", default=None,
+                        help="banked dry-run manifest path (execute only)")
     parser.add_argument("--work-dir", default=None)
     arguments = parser.parse_args(argv)
 
@@ -589,7 +756,9 @@ def main(argv=None) -> int:
         return 0
     if not arguments.output:
         parser.error("--execute requires --output")
-    run_execute(arguments.power_artifact, arguments.output,
+    if not arguments.manifest:
+        parser.error("--execute requires --manifest (the banked dry-run manifest)")
+    run_execute(arguments.power_artifact, arguments.output, arguments.manifest,
                 work_dir=arguments.work_dir)
     return 0
 

@@ -233,7 +233,7 @@ def scripted_action_for_assignment(
 
 
 async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, seed,
-                                        database_path):
+                                        database_path, expected_evidence_sha256):
     from oasis import ActionType, AgentGraph, SocialAgent, make
     from oasis.social_platform.channel import Channel
     from oasis.social_platform.platform import Platform
@@ -342,6 +342,13 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
         validate_frame_provenance(frame, evidence)
         evidence_bytes = frame_eligibility_evidence_to_bytes(evidence)
         evidence_sha = frame_eligibility_evidence_sha256(evidence)
+        if expected_evidence_sha256 is not None and (
+            evidence_sha != expected_evidence_sha256
+        ):
+            raise ValueError(
+                f"pre-draw eligibility evidence hash {evidence_sha} does not "
+                f"recreate the banked hash {expected_evidence_sha256} — "
+                f"failing closed BEFORE the first draw")
 
         parent_posts = {}
         filler_posts = {}
@@ -412,12 +419,19 @@ def run_scripted_oasis_control(
     seed_stream_id: str,
     seed: int,
     database_path: str,
+    *,
+    expected_evidence_sha256: str = None,
 ) -> ScriptedControlRun:
     """Full-platform non-LLM bridge: the exact production wrapper, selector, schema,
     estimator inputs, installed OASIS platform, round clock, and trace surface. The
-    model wrapper is the fail-closed sentinel — any LLM invocation raises."""
+    model wrapper is the fail-closed sentinel — any LLM invocation raises.
+
+    `expected_evidence_sha256` (additive keyword, review F1): when supplied, the
+    session's pre-draw eligibility-evidence hash must recreate it byte-identically
+    or the session fails closed BEFORE its first draw."""
     import asyncio
 
     control_probe_rngs(seed_stream_id, seed)  # reject unregistered streams up front
     return asyncio.run(_drive_scripted_oasis_control(
-        frame, truth, run_id, seed_stream_id, seed, database_path))
+        frame, truth, run_id, seed_stream_id, seed, database_path,
+        expected_evidence_sha256))

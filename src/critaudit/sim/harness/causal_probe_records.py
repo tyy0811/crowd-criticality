@@ -19,6 +19,7 @@ __all__ = (
     "RReplyEstimate",
     "sampling_frame_to_bytes",
     "sampling_frame_sha256",
+    "sampling_frame_from_bytes",
     "frame_eligibility_evidence_to_bytes",
     "frame_eligibility_evidence_sha256",
 )
@@ -154,6 +155,34 @@ def sampling_frame_to_bytes(frame: SamplingFrame) -> bytes:
 
 def sampling_frame_sha256(frame: SamplingFrame) -> str:
     return hashlib.sha256(sampling_frame_to_bytes(frame)).hexdigest()
+
+
+def sampling_frame_from_bytes(data: bytes) -> SamplingFrame:
+    """Rebuild a SamplingFrame from its canonical bytes, fail-closed.
+
+    The reconstruction must reproduce the input byte-for-byte — JSON-equivalent
+    but non-canonical bytes are rejected rather than silently normalized, so a
+    frame's hash chain cannot be laundered through re-serialization."""
+    try:
+        payload = json.loads(data)
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"sampling frame bytes are not valid JSON: {exc}")
+    try:
+        frame = SamplingFrame(
+            frame_id=payload["frame_id"],
+            parent_records=tuple(
+                ParentEligibility(**row) for row in payload["parent_records"]),
+            excluded_recipient_agent_ids=tuple(
+                payload["excluded_recipient_agent_ids"]),
+            candidate_pairs=tuple(
+                CandidatePair(**row) for row in payload["candidate_pairs"]),
+        )
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"sampling frame bytes have a drifted schema: {exc}")
+    if sampling_frame_to_bytes(frame) != data:
+        raise ValueError(
+            "sampling frame bytes are not canonical (fail-closed)")
+    return frame
 
 
 def frame_eligibility_evidence_to_bytes(
