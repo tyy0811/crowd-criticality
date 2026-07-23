@@ -262,7 +262,10 @@ def test_treatment_serves_parent_exactly_once_and_preserves_length(db_path):
     assert service.selection_probability == 0.4
     assert service.treatment_probability == 0.5
     assert service.parent_served is True
-    assert service.parent_seen_in_background is True
+    # deduplicated raw-background occurrence is a DIAGNOSTIC, not leakage:
+    # the served feed carries the parent exactly once, so no breach is recorded
+    assert service.parent_seen_in_background is False
+    assert service.parent_in_raw_background is True
     assert service.feed_length_before == len(background_with_leak)
     assert service.feed_length_after == len(feed)
 
@@ -278,6 +281,7 @@ def test_treatment_without_background_leak_records_clean_service(db_path):
     (service,) = controller.services
     assert service.parent_served is True
     assert service.parent_seen_in_background is False
+    assert service.parent_in_raw_background is False
     assert service.feed_length_before == service.feed_length_after == len(background)
 
 
@@ -302,7 +306,10 @@ def test_holdout_serves_filler_and_never_the_parent(db_path):
     assert assignment.filler_item_id == "post:3"
     (service,) = controller.services
     assert service.parent_served is False
-    assert service.parent_seen_in_background is True
+    # the parent was stripped from the served feed; the raw occurrence is a
+    # diagnostic, not a served-feed breach
+    assert service.parent_seen_in_background is False
+    assert service.parent_in_raw_background is True
     assert service.feed_length_before == service.feed_length_after == len(feed)
 
 
@@ -478,6 +485,61 @@ def test_empty_background_feed_fails_closed_on_selection(db_path):
     controller = _controller(db_path, _Stream(0.10), _Stream(0.10))
     with pytest.raises(ValueError, match="feed"):
         controller.refresh(20, 3, ())
+
+
+# --- refresh isolation: serving-time fail-closed cases -----------------------------------------
+
+
+def test_same_round_co_stratum_parent_is_stripped_from_the_feed(db_path):
+    """The selector alone decides serving: the same stratum's UNSELECTED parent
+    must never ride into the served feed organically."""
+    controller = _controller(db_path, _Stream(0.10), _Stream(0.10))
+    background = (_post_dict(db_path, 2), _post_dict(db_path, 5))
+    feed = controller.refresh(20, 3, background)
+    served_ids = [post["post_id"] for post in feed]
+    assert len(feed) == 2
+    assert 2 not in served_ids       # co-stratum parent stripped
+    assert served_ids[0] == 1        # selected parent served
+    (service,) = controller.services
+    assert service.parent_seen_in_background is False
+
+
+def test_feed_shrinkage_fails_closed(db_path):
+    controller = _controller(db_path, _Stream(0.10), _Stream(0.10))
+    background = (_post_dict(db_path, 1), _post_dict(db_path, 2))
+    with pytest.raises(ValueError, match="shrinkage"):
+        controller.refresh(20, 3, background)
+
+
+def test_future_round_parent_in_stratum_feed_fails_closed(db_path):
+    """A parent registered to one of THIS agent's later-round undrawn strata
+    appearing in a stratum-path background is a pre-draw exposure breach."""
+    frame = _frame()
+    two_round_frame = replace(
+        frame,
+        candidate_pairs=frame.candidate_pairs + (
+            replace(frame.candidate_pairs[1], pair_id="pair:4", agent_id=20,
+                    round_id=4, stratum_id="agent:20:round:4",
+                    parent_first_readable_round=4),
+        ),
+    )
+    controller = CausalRefreshController(
+        two_round_frame,
+        _Stream(0.10),
+        _Stream(0.10),
+        parent_posts={"post:1": _post_dict(db_path, 1), "post:2": _post_dict(db_path, 2)},
+        filler_posts={"post:1": _post_dict(db_path, 3), "post:2": _post_dict(db_path, 4)},
+    )
+    background = (_post_dict(db_path, 2), _post_dict(db_path, 5))
+    with pytest.raises(ValueError, match="future-round"):
+        controller.refresh(20, 3, background)
+
+
+def test_non_finite_treatment_draw_fails_closed(db_path):
+    """A NaN treatment uniform must never silently become a holdout."""
+    controller = _controller(db_path, _Stream(0.10), _Stream(float("nan")))
+    with pytest.raises(ValueError, match="treatment draw"):
+        controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
 
 
 # --- refresh isolation: pending-exposure guard -------------------------------------------------

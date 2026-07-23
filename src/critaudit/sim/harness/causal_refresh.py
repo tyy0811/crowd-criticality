@@ -64,7 +64,14 @@ def post_item_id(post: object) -> str:
 
 @dataclass(frozen=True)
 class ServiceRecord:
-    """Pre-outcome service verification logged at the refresh boundary."""
+    """Pre-outcome service verification logged at the refresh boundary.
+
+    `parent_seen_in_background` carries the OUTCOME semantics: the parent is
+    visible in the FINAL SERVED feed beyond the intentional experimental
+    serving (treated: any duplication; holdout: any occurrence) — a protocol
+    breach, impossible when the feed builder succeeds. A benign raw-background
+    occurrence that the builder deduplicated is recorded separately as the
+    diagnostic `parent_in_raw_background` and is NOT leakage."""
 
     assignment_id: str
     pair_id: str
@@ -72,6 +79,7 @@ class ServiceRecord:
     treatment_probability: float
     parent_served: bool
     parent_seen_in_background: bool
+    parent_in_raw_background: bool
     feed_length_before: int
     feed_length_after: int
 
@@ -239,17 +247,51 @@ class CausalRefreshController:
 
     def _build_feed(
         self, pair: CandidatePair, treated: bool, background_posts: tuple
-    ) -> tuple[tuple, bool]:
+    ) -> tuple[tuple, bool, bool]:
+        """Serve the experimental slot with full isolation:
+
+        - ALL of this agent's SAME-ROUND registered parents are stripped from
+          the background (the selector alone decides serving — an unselected
+          co-stratum parent must never ride in organically);
+        - a parent registered to one of this agent's LATER-round undrawn strata
+          appearing in the background is a pre-draw exposure breach → raise;
+        - a stripped background that cannot preserve the feed length (feed
+          shrinkage) fails closed → raise;
+        - the returned breach flag carries the served-feed semantics (treated:
+          duplication beyond the intentional serving; holdout: any parent
+          occurrence) — impossible when this builder returns."""
         parent_item = pair.parent_item_id
         filler_item = self._filler_item_ids[parent_item]
-        background_ids = [post_item_id(post) for post in background_posts]
         if not background_posts:
             raise ValueError("cannot serve an experimental item into an empty feed")
-        parent_seen = parent_item in background_ids
+        background_ids = [post_item_id(post) for post in background_posts]
+
+        agent_pairs = [
+            candidate for candidate in self._frame.candidate_pairs
+            if candidate.agent_id == pair.agent_id
+        ]
+        later_pending_parents = {
+            candidate.parent_item_id for candidate in agent_pairs
+            if candidate.round_id > pair.round_id
+            and candidate.stratum_id not in self._drawn_strata
+        }
+        leaked_later = later_pending_parents & set(background_ids)
+        if leaked_later:
+            raise ValueError(
+                f"isolation breach: future-round registered parent(s) "
+                f"{sorted(leaked_later)!r} served to recipient {pair.agent_id} "
+                f"before their stratum draw (fail-closed)")
+
+        same_round_parents = {
+            candidate.parent_item_id for candidate in agent_pairs
+            if candidate.round_id == pair.round_id
+        }
+        strip = same_round_parents | {filler_item}
+        parent_in_raw_background = parent_item in background_ids
         base = tuple(
             post
             for post, item_id in zip(background_posts, background_ids)
-            if item_id not in (parent_item, filler_item)
+            if item_id not in strip
         )
         served = (
             self._parent_posts[parent_item]
@@ -257,7 +299,16 @@ class CausalRefreshController:
             else self._filler_posts[parent_item]
         )
         feed = ((served,) + base)[: len(background_posts)]
-        return feed, parent_seen
+        if len(feed) != len(background_posts):
+            raise ValueError(
+                "feed shrinkage: the stripped background cannot preserve the "
+                "feed length (fail-closed)")
+        served_ids = [post_item_id(post) for post in feed]
+        if treated:
+            served_breach = served_ids.count(parent_item) != 1
+        else:
+            served_breach = parent_item in served_ids
+        return feed, parent_in_raw_background, served_breach
 
     def refresh(
         self, agent_id: int, round_id: int, background_posts: tuple
@@ -283,10 +334,12 @@ class CausalRefreshController:
             )
             return background_posts
 
-        treated = bool(
-            float(self._treatment_rng.random()) < pair.treatment_probability
-        )
-        feed, parent_seen = self._build_feed(pair, treated, background_posts)
+        treatment_uniform = float(self._treatment_rng.random())
+        if not 0.0 <= treatment_uniform < 1.0 or not math.isfinite(treatment_uniform):
+            raise ValueError("treatment draw outside [0, 1) (fail-closed)")
+        treated = bool(treatment_uniform < pair.treatment_probability)
+        feed, parent_in_raw_background, served_breach = self._build_feed(
+            pair, treated, background_posts)
         self._draws.append(
             StratumDraw(
                 frame_id=self._frame.frame_id,
@@ -309,7 +362,8 @@ class CausalRefreshController:
                 selection_probability=pair.selection_probability,
                 treatment_probability=pair.treatment_probability,
                 parent_served=treated,
-                parent_seen_in_background=parent_seen,
+                parent_seen_in_background=served_breach,
+                parent_in_raw_background=parent_in_raw_background,
                 feed_length_before=len(background_posts),
                 feed_length_after=len(feed),
             )
