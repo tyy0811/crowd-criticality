@@ -192,7 +192,29 @@ def test_exact_public_surface_is_frozen():
         "sampling_frame_from_bytes",
         "frame_eligibility_evidence_to_bytes",
         "frame_eligibility_evidence_sha256",
+        "frame_eligibility_evidence_from_bytes",
     )
+
+
+def test_frame_evidence_round_trips_through_canonical_bytes():
+    evidence = records.FrameEligibilityEvidence(
+        frame_id="frame:roundtrip",
+        news_user_agent_id=9,
+        pair_evidence=(
+            records.PairEligibilityEvidence(
+                pair_id="pair:1", parent_author_agent_id=0,
+                parent_created_round=0, first_readable_round=1,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+        ),
+    )
+    payload = records.frame_eligibility_evidence_to_bytes(evidence)
+    recovered = records.frame_eligibility_evidence_from_bytes(payload)
+    assert recovered == evidence
+    assert records.frame_eligibility_evidence_to_bytes(recovered) == payload
+    with pytest.raises(ValueError):
+        records.frame_eligibility_evidence_from_bytes(b"not json")
+    with pytest.raises(ValueError, match="canonical"):
+        records.frame_eligibility_evidence_from_bytes(b" " + payload)
 
 
 def test_sampling_frame_round_trips_through_canonical_bytes():

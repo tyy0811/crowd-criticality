@@ -24,6 +24,8 @@ import math
 import os
 import tempfile
 
+import numpy as np
+
 from critaudit.experiments.causal_probe_power import (
     MAX_MEAN_CI_FULL_WIDTH,
     MC_MAX_HALF_WIDTH,
@@ -57,16 +59,23 @@ from critaudit.sim.controls.causal_probe_marker_control import (
 from critaudit.sim.harness import causal_probe_spec as spec
 from critaudit.sim.harness.causal_probe import estimate_r_reply
 from critaudit.sim.harness.causal_probe_records import (
+    ProbeManifest,
+    frame_eligibility_evidence_from_bytes,
     frame_eligibility_evidence_sha256,
     sampling_frame_from_bytes,
     sampling_frame_sha256,
     sampling_frame_to_bytes,
 )
-from critaudit.sim.harness.causal_probe_validation import validate_sampling_frame
+from critaudit.sim.harness.causal_probe_validation import (
+    validate_frame_provenance,
+    validate_sampling_frame,
+)
 
 __all__ = (
+    "RECOVERABILITY_CELL_STREAM",
     "RecoverabilityManifest",
     "build_recoverability_manifest",
+    "derive_cell_seed",
     "evaluate_recoverability_gate",
     "load_recoverability_manifest",
     "main",
@@ -74,6 +83,19 @@ __all__ = (
     "run_execute",
     "write_recoverability_artifact",
 )
+
+# Registered independence derivation (review F4): the executed grid draws each
+# (registered seed, cell) with an independent child seed. Reusing a raw seed
+# across plants would NEST the potential schedules (shared uniforms across
+# cells) and replay identical selection/treatment streams — a joint law the
+# banked power simulator, which draws cells independently, does not describe.
+RECOVERABILITY_CELL_STREAM = 941
+
+
+def derive_cell_seed(seed: int, cell_index: int) -> int:
+    return int(np.random.SeedSequence(
+        int(seed), spawn_key=(RECOVERABILITY_CELL_STREAM, int(cell_index))
+    ).generate_state(1)[0])
 
 
 @dataclass(frozen=True)
@@ -216,10 +238,55 @@ def load_recoverability_manifest(path: str) -> RecoverabilityManifest:
     return manifest
 
 
+def _verify_run_manifest(run, frame, cell_index, position, seen_run_ids):
+    """Per-run ProbeManifest verification (review F2): relabeled, reordered, or
+    ledger-inconsistent run manifests fail closed."""
+    probe_manifest = run.manifest
+    if type(probe_manifest) is not ProbeManifest:
+        raise ValueError("run manifest must be a ProbeManifest (fail-closed)")
+    if probe_manifest.run_id in seen_run_ids:
+        raise ValueError("run IDs must be unique across the grid (fail-closed)")
+    seen_run_ids.add(probe_manifest.run_id)
+    if probe_manifest.seed_stream_id != CONTROL_SEED_STREAM:
+        raise ValueError(
+            "run manifest is relabeled onto a foreign seed stream (fail-closed)")
+    expected_seed = derive_cell_seed(RECOVERABILITY_SEEDS[position], cell_index)
+    if probe_manifest.raw_seed != expected_seed:
+        raise ValueError(
+            f"run manifest raw seed {probe_manifest.raw_seed} does not equal "
+            f"the registered derivation for seed position {position}, cell "
+            f"{cell_index} (fail-closed)")
+    if probe_manifest.frame_id != frame.frame_id:
+        raise ValueError("run manifest frame ID drifted (fail-closed)")
+    if probe_manifest.root_ids != tuple(
+        parent.parent_item_id for parent in frame.parent_records
+    ):
+        raise ValueError("run manifest root registry drifted (fail-closed)")
+    if probe_manifest.pair_ids != tuple(
+        pair.pair_id for pair in frame.candidate_pairs
+    ):
+        raise ValueError("run manifest pair registry drifted (fail-closed)")
+    if probe_manifest.assignment_ids != tuple(
+        assignment.assignment_id for assignment in run.assignments
+    ):
+        raise ValueError(
+            "run manifest assignments do not match the run's ledger (fail-closed)")
+    children = {
+        outcome.direct_child_item_id for outcome in run.outcomes
+        if outcome.direct_child_item_id is not None
+    }
+    if not children <= set(probe_manifest.event_ids):
+        raise ValueError(
+            "run outcomes name children outside the manifest event registry "
+            "(fail-closed)")
+
+
 def _verify_cell_results(cell_results, manifest):
     """Re-verify EVERY structural claim from primary evidence (review F2): the
-    complete per-run ledgers, byte-hash chains, and estimate reproduction. A
-    summary without evidence, or forged evidence, raises — it can never PASS."""
+    complete per-run ledgers, byte-hash chains, deserialized-and-validated
+    eligibility evidence, per-run manifests against the registered seed
+    derivation, and estimate reproduction. A summary without evidence, or
+    forged evidence, raises — it can never PASS."""
     results = tuple(cell_results)
     if len(results) != len(PLANT_R_GRID):
         raise ValueError("gate requires exactly one cell result per registered plant")
@@ -227,8 +294,10 @@ def _verify_cell_results(cell_results, manifest):
     evidence_sha = manifest.eligibility_evidence_sha256s[0]
     frame = None
     frame_bytes = None
+    evidence_bytes = None
+    seen_run_ids = set()
     means = []
-    for cell, plant_r in zip(results, PLANT_R_GRID):
+    for cell_index, (cell, plant_r) in enumerate(zip(results, PLANT_R_GRID)):
         if cell.get("plant_r") != plant_r:
             raise ValueError("cell results are out of registered grid order")
         runs = tuple(cell.get("runs", ()))
@@ -266,9 +335,17 @@ def _verify_cell_results(cell_results, manifest):
                     raise ValueError(
                         "reconstructed frame does not hash to the manifest "
                         "frame hash (fail-closed)")
-            elif run.frame_bytes != frame_bytes:
-                raise ValueError("runs carry non-identical frame bytes "
-                                 "(fail-closed)")
+                evidence_bytes = run.eligibility_evidence_bytes
+                evidence = frame_eligibility_evidence_from_bytes(evidence_bytes)
+                validate_frame_provenance(frame, evidence)
+            else:
+                if run.frame_bytes != frame_bytes:
+                    raise ValueError("runs carry non-identical frame bytes "
+                                     "(fail-closed)")
+                if run.eligibility_evidence_bytes != evidence_bytes:
+                    raise ValueError(
+                        "runs carry non-identical evidence bytes (fail-closed)")
+            _verify_run_manifest(run, frame, cell_index, position, seen_run_ids)
             estimate = estimate_r_reply(
                 frame, run.draws, run.assignments, run.outcomes)
             if estimate.estimate != estimates[position]:
@@ -566,7 +643,11 @@ def run_dry_run(power_artifact_path: str, work_dir: str, *, support=None):
         manifest_json[key] = list(manifest_json[key])
     report = {
         "execute": False,
-        "provider_paths_reachable": False,
+        # precise claim (review): provider INFERENCE is uninvoked and
+        # fail-closed — the sentinel wrapper is constructed but raises on any
+        # model call; no network inference path is exercised.
+        "provider_inference_invoked": False,
+        "provider_inference_fail_closed": True,
         "support": dict(support),
         "manifest": manifest_json,
         "manifest_path": manifest_path,
@@ -621,19 +702,24 @@ def run_execute(power_artifact_path: str, output_path: str, manifest_path: str,
     reply_cells = []
     cell_results = []
     reply_manifests = []
-    for plant_r in PLANT_R_GRID:
+    for cell_index, plant_r in enumerate(PLANT_R_GRID):
         estimates = []
         runs = []
         run_records = []
         for seed in RECOVERABILITY_SEEDS:
-            truth = build_power_schedule(frame, plant_r, seed)
+            # registered independence derivation (review F4): schedules and
+            # selection/treatment streams are independent ACROSS CELLS, matching
+            # the banked power simulator's joint law — a raw registered seed is
+            # never reused across plants.
+            derived_seed = derive_cell_seed(seed, cell_index)
+            truth = build_power_schedule(frame, plant_r, derived_seed)
             database_path = os.path.join(
                 work_dir, f"reply_{plant_r}_{seed}.db")
             run = run_scripted_oasis_control(
                 frame, truth,
                 run_id=f"run:recoverability:{plant_r}:{seed}",
                 seed_stream_id=CONTROL_SEED_STREAM,
-                seed=seed,
+                seed=derived_seed,
                 database_path=database_path,
                 expected_evidence_sha256=banked_evidence_sha,
             )
@@ -663,7 +749,9 @@ def run_execute(power_artifact_path: str, output_path: str, manifest_path: str,
                 "assignments": [asdict(a) for a in run.assignments],
                 "outcomes": [asdict(o) for o in run.outcomes],
                 "estimate": asdict(estimate),
-                "schedule_seed": int(seed),
+                "registered_seed": int(seed),
+                "derived_seed": int(derived_seed),
+                "schedule_seed": int(derived_seed),
                 "r_plant": truth.r_plant,
                 "r_gen_frame": truth.r_gen_frame,
                 "potential_responses_sha256": hashlib.sha256(

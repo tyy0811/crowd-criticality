@@ -22,6 +22,7 @@ __all__ = (
     "sampling_frame_from_bytes",
     "frame_eligibility_evidence_to_bytes",
     "frame_eligibility_evidence_sha256",
+    "frame_eligibility_evidence_from_bytes",
 )
 
 
@@ -199,3 +200,28 @@ def frame_eligibility_evidence_sha256(
     return hashlib.sha256(
         frame_eligibility_evidence_to_bytes(evidence)
     ).hexdigest()
+
+
+def frame_eligibility_evidence_from_bytes(data: bytes) -> FrameEligibilityEvidence:
+    """Rebuild FrameEligibilityEvidence from its canonical bytes, fail-closed.
+
+    Like `sampling_frame_from_bytes`, the reconstruction must reproduce the
+    input byte-for-byte — JSON-equivalent but non-canonical bytes are rejected
+    so an evidence hash chain cannot be laundered through re-serialization."""
+    try:
+        payload = json.loads(data)
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"evidence bytes are not valid JSON: {exc}")
+    try:
+        evidence = FrameEligibilityEvidence(
+            frame_id=payload["frame_id"],
+            news_user_agent_id=payload["news_user_agent_id"],
+            pair_evidence=tuple(
+                PairEligibilityEvidence(**row)
+                for row in payload["pair_evidence"]),
+        )
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"evidence bytes have a drifted schema: {exc}")
+    if frame_eligibility_evidence_to_bytes(evidence) != data:
+        raise ValueError("evidence bytes are not canonical (fail-closed)")
+    return evidence

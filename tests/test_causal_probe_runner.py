@@ -18,6 +18,7 @@ from critaudit.experiments.causal_probe_power import (
 from critaudit.experiments.causal_probe_recoverability import (
     RecoverabilityManifest,
     build_recoverability_manifest,
+    derive_cell_seed,
     evaluate_recoverability_gate,
     load_recoverability_manifest,
     main,
@@ -43,9 +44,13 @@ from critaudit.sim.harness import causal_probe_spec as spec
 from critaudit.sim.harness.causal_probe import estimate_r_reply
 from critaudit.sim.harness.causal_probe_records import (
     Assignment,
+    FrameEligibilityEvidence,
     Outcome,
+    PairEligibilityEvidence,
     ProbeManifest,
     StratumDraw,
+    frame_eligibility_evidence_sha256,
+    frame_eligibility_evidence_to_bytes,
     sampling_frame_sha256,
     sampling_frame_to_bytes,
 )
@@ -55,13 +60,31 @@ _POWER_ARTIFACT = os.path.join(_REPO, spec.POWER_ARTIFACT_PATH)
 
 # --- fabricated PRIMARY evidence for the pure gate tests ---------------------------------------
 # A small but real power-layout frame; every gate input below carries complete
-# ledgers the gate must re-verify, never bare summaries.
+# ledgers AND real, provenance-valid eligibility evidence the gate must
+# deserialize and re-verify — never bare summaries.
 
 _FRAME = build_power_frame(100, 4)
 _FRAME_BYTES = sampling_frame_to_bytes(_FRAME)
 _FRAME_SHA = sampling_frame_sha256(_FRAME)
-_EVIDENCE_BYTES = b'{"fixture": "predraw eligibility evidence"}\n'
-_EVIDENCE_SHA = hashlib.sha256(_EVIDENCE_BYTES).hexdigest()
+
+_PARENT_BY_ID = {parent.parent_item_id: parent for parent in _FRAME.parent_records}
+_EVIDENCE = FrameEligibilityEvidence(
+    frame_id=_FRAME.frame_id,
+    news_user_agent_id=_FRAME.excluded_recipient_agent_ids[-1],
+    pair_evidence=tuple(
+        PairEligibilityEvidence(
+            pair_id=pair.pair_id,
+            parent_author_agent_id=_PARENT_BY_ID[pair.parent_item_id].author_agent_id,
+            parent_created_round=_PARENT_BY_ID[pair.parent_item_id].created_round,
+            first_readable_round=pair.parent_first_readable_round,
+            prior_exposure_count=0,
+            complete_same_action_opportunity=True,
+        )
+        for pair in _FRAME.candidate_pairs
+    ),
+)
+_EVIDENCE_BYTES = frame_eligibility_evidence_to_bytes(_EVIDENCE)
+_EVIDENCE_SHA = frame_eligibility_evidence_sha256(_EVIDENCE)
 
 
 def _manifest(**overrides):
@@ -80,10 +103,11 @@ def _manifest(**overrides):
     return RecoverabilityManifest(**values)
 
 
-def _fabricated_run(plant_r, position, n_responders):
+def _fabricated_run(plant_r, cell_index, position, n_responders):
     """A complete, validator-clean ScriptedControlRun: the first `n_responders`
     strata select their first pair (treated, with a native child in the frozen
-    outcome round); every other stratum logs an explicit no-selection draw."""
+    outcome round); every other stratum logs an explicit no-selection draw. The
+    manifest carries the REGISTERED per-cell seed derivation."""
     draws = []
     assignments = []
     outcomes = []
@@ -115,7 +139,7 @@ def _fabricated_run(plant_r, position, n_responders):
         run_id=f"run:recoverability:{plant_r}:{RECOVERABILITY_SEEDS[position]}",
         frame_id=_FRAME.frame_id,
         seed_stream_id=CONTROL_SEED_STREAM,
-        raw_seed=RECOVERABILITY_SEEDS[position],
+        raw_seed=derive_cell_seed(RECOVERABILITY_SEEDS[position], cell_index),
         root_ids=tuple(p.parent_item_id for p in _FRAME.parent_records),
         round_ids=(0, 1),
         event_ids=tuple(o.direct_child_item_id for o in outcomes),
@@ -136,9 +160,12 @@ def _fabricated_run(plant_r, position, n_responders):
 
 def _cell_results(responder_counts=(12, 18, 19, 21, 22, 26)):
     cells = []
-    for plant_r, count in zip(PLANT_R_GRID, responder_counts):
+    for cell_index, (plant_r, count) in enumerate(
+        zip(PLANT_R_GRID, responder_counts)
+    ):
         runs = tuple(
-            _fabricated_run(plant_r, position, count) for position in range(12))
+            _fabricated_run(plant_r, cell_index, position, count)
+            for position in range(12))
         estimates = tuple(
             estimate_r_reply(_FRAME, run.draws, run.assignments, run.outcomes).estimate
             for run in runs)
@@ -339,6 +366,65 @@ def test_gate_rejects_forged_or_missing_run_evidence(forge):
             forge(_cell_results()), marker_cells, peak, _manifest())
 
 
+def test_gate_rejects_hash_consistent_invalid_evidence():
+    """Owner repro: evidence bytes whose hash chain is internally consistent but
+    which are NOT valid canonical FrameEligibilityEvidence must raise — the
+    gate deserializes and provenance-validates, never trusts the hash alone."""
+    garbage = b'{"not": "evidence"}\n'
+    garbage_sha = hashlib.sha256(garbage).hexdigest()
+    cells = tuple(
+        dict(cell, runs=tuple(
+            dataclasses.replace(
+                run, eligibility_evidence_bytes=garbage,
+                eligibility_evidence_sha256=garbage_sha)
+            for run in cell["runs"]))
+        for cell in _cell_results())
+    marker_cells = _marker_grid()
+    peak = locate_chi_peak(marker_cells)
+    with pytest.raises(ValueError):
+        evaluate_recoverability_gate(
+            cells, marker_cells, peak,
+            _manifest(eligibility_evidence_sha256s=(garbage_sha,)))
+
+
+def test_gate_rejects_reordered_seed_manifests():
+    """Owner repro: swapping two runs (with their estimates) must fail on the
+    registered per-cell seed derivation, not silently PASS."""
+    cells = _cell_results()
+    first = cells[0]
+    runs = (first["runs"][1], first["runs"][0]) + first["runs"][2:]
+    estimates = (first["estimates"][1], first["estimates"][0]) + first["estimates"][2:]
+    swapped = (dict(first, runs=runs, estimates=estimates),) + cells[1:]
+    marker_cells = _marker_grid()
+    peak = locate_chi_peak(marker_cells)
+    with pytest.raises(ValueError, match="derivation"):
+        evaluate_recoverability_gate(swapped, marker_cells, peak, _manifest())
+
+
+def test_gate_rejects_evidence_that_fails_provenance():
+    """Valid canonical evidence bytes that contradict the frame registry (wrong
+    author) must fail closed through validate_frame_provenance."""
+    wrong_rows = tuple(
+        dataclasses.replace(row, parent_author_agent_id=row.parent_author_agent_id + 1)
+        for row in _EVIDENCE.pair_evidence)
+    wrong_evidence = dataclasses.replace(_EVIDENCE, pair_evidence=wrong_rows)
+    wrong_bytes = frame_eligibility_evidence_to_bytes(wrong_evidence)
+    wrong_sha = frame_eligibility_evidence_sha256(wrong_evidence)
+    cells = tuple(
+        dict(cell, runs=tuple(
+            dataclasses.replace(
+                run, eligibility_evidence_bytes=wrong_bytes,
+                eligibility_evidence_sha256=wrong_sha)
+            for run in cell["runs"]))
+        for cell in _cell_results())
+    marker_cells = _marker_grid()
+    peak = locate_chi_peak(marker_cells)
+    with pytest.raises(ValueError, match="author"):
+        evaluate_recoverability_gate(
+            cells, marker_cells, peak,
+            _manifest(eligibility_evidence_sha256s=(wrong_sha,)))
+
+
 def test_gate_rejects_forged_marker_cells_and_peak():
     marker_cells = _marker_grid()
     peak = locate_chi_peak(marker_cells)
@@ -397,7 +483,8 @@ def test_dry_run_builds_hashes_without_any_draw(tmp_path):
     lines = [line for line in stdout.getvalue().splitlines() if line.strip()]
     printed = json.loads(lines[-1])
     assert printed["execute"] is False
-    assert printed["provider_paths_reachable"] is False
+    assert printed["provider_inference_invoked"] is False
+    assert printed["provider_inference_fail_closed"] is True
     assert printed == report
 
     manifest = report["manifest"]
