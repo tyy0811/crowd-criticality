@@ -231,12 +231,17 @@ def load_frame_eligibility_evidence(frame, database_path, trace_rows):
     Everything is read from the actual DB/trace rows: parent author + creation round from the
     post table, first readability = creation round + 1 (submit-in-round-r / readable-from-r+1),
     prior exposure = refresh trace rows serving the parent to the recipient before the pair
-    round. COMPLETE same-action opportunity is MEASURED as: the recipient's signed-up user row
-    exists AND the parent is a ROOT post (`original_post_id IS NULL`) — on the installed
-    platform a quote/repost of a derived post is redirected to its root, so all three
-    registered same-actions (comment/quote/repost) can natively land on the parent only when
-    it is a root. The dedicated news user is identified by its DB row, and
-    `validate_frame_provenance` enforces its exclusion."""
+    round. COMPLETE same-action opportunity is MEASURED conservatively as: the recipient's
+    signed-up user row exists AND the parent is a ROOT post (`original_post_id IS NULL`). A
+    root parent is the case for which all three registered same-actions land natively on the
+    parent itself: a comment records `post_id = parent`, and the installed platform's
+    `quote_post`/`repost` on a `common` (root) post record `original_post_id = parent`
+    (platform.py). For a derived (non-root) parent, the same `quote_post`/`repost` path
+    resolves a `quote`/`repost` source to its `root_post_id` rather than the parent, so a
+    native quote/repost OF the parent is not recorded against it; requiring a root parent is
+    therefore the conservative condition under which the complete same-action opportunity is
+    known to hold, not a claim about every post type's redirect behavior. The dedicated news
+    user is identified by its DB row, and `validate_frame_provenance` enforces its exclusion."""
     validate_sampling_frame(frame)
     con = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
     try:

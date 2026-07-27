@@ -5,9 +5,11 @@ The runner stays DORMANT through Tasks 1-7: `--dry-run` performs the hash prefli
 frame/evidence/manifest hashing, teardown before any selection, treatment, action,
 marker cascade, or outcome) and `--execute` — which requires the separate Task-8
 owner authorization — runs ONLY the scripted full-platform control and the disjoint
-marker control. No LLM or provider path is imported or reachable from this module;
-every platform session runs on the fail-closed sentinel model, which raises if any
-model call is attempted.
+marker control. Provider INFERENCE is uninvoked and fail-closed: every platform
+session runs on the sentinel model wrapper, which raises on any model call, so no
+provider network/inference path is exercised (the wrapper class is constructed but
+never invoked). This module imports no provider client or driver-side inference
+path — asserted by the runner import-surface test.
 
 Gate clauses are frozen here, before any execution, and cannot change after
 `--execute` begins: the evaluator is a pure function of the executed ledgers, the
@@ -296,6 +298,7 @@ def _verify_cell_results(cell_results, manifest):
     frame_bytes = None
     evidence_bytes = None
     seen_run_ids = set()
+    reply_manifests = []
     means = []
     for cell_index, (cell, plant_r) in enumerate(zip(results, PLANT_R_GRID)):
         if cell.get("plant_r") != plant_r:
@@ -346,6 +349,7 @@ def _verify_cell_results(cell_results, manifest):
                     raise ValueError(
                         "runs carry non-identical evidence bytes (fail-closed)")
             _verify_run_manifest(run, frame, cell_index, position, seen_run_ids)
+            reply_manifests.append(run.manifest)
             estimate = estimate_r_reply(
                 frame, run.draws, run.assignments, run.outcomes)
             if estimate.estimate != estimates[position]:
@@ -357,7 +361,7 @@ def _verify_cell_results(cell_results, manifest):
                             abs_tol=1e-12):
             raise ValueError("cell mean does not reproduce from its estimates")
         means.append(mean)
-    return results, means
+    return results, means, tuple(reply_manifests)
 
 
 def _verify_marker_cells(marker_cells, chi_peak):
@@ -365,6 +369,7 @@ def _verify_marker_cells(marker_cells, chi_peak):
     if len(cells) != len(PLANT_R_GRID):
         raise ValueError("gate requires exactly six aggregated marker cells")
     supports = set()
+    marker_manifests = []
     for cell, plant_r in zip(cells, PLANT_R_GRID):
         if type(cell) is not MarkerGridCell:
             raise ValueError("marker cells must be MarkerGridCell records")
@@ -375,25 +380,36 @@ def _verify_marker_cells(marker_cells, chi_peak):
                 "(fail-closed)")
         for result in cell.seed_results:
             supports.add(result.manifest.support_per_root)
+            marker_manifests.append(result.manifest)
     if len(supports) != 1:
         raise ValueError("marker cohort support is not equal across seeds/cells")
     if locate_chi_peak(cells) != chi_peak:
         raise ValueError(
             "chi peak does not reproduce from the marker cells (fail-closed)")
-    return cells
+    return cells, tuple(marker_manifests)
 
 
 def evaluate_recoverability_gate(cell_results, marker_cells, chi_peak, manifest):
     """Frozen PASS/FAIL clauses; scientific failures return FAIL, structural
     violations RAISE. Every structural claim is re-verified here from primary
     evidence — complete run ledgers, byte-hash chains against the banked
-    manifest, marker re-aggregation, and peak re-location — so neither forged
-    nor missing evidence can reach a PASS (or launder a FAIL). The returned
-    `structural_failures` is therefore 0 by construction whenever the gate
-    returns at all. No clause or threshold changes after execution begins."""
+    manifest, marker re-aggregation, peak re-location, AND the full
+    reply×marker manifest-disjointness firewall — so neither forged nor
+    missing evidence (including cross-cohort identifier collisions) can reach a
+    PASS (or launder a FAIL). The returned `structural_failures` is therefore 0
+    by construction whenever the gate returns at all. No clause or threshold
+    changes after execution begins."""
     _validate_manifest(manifest)
-    results, means = _verify_cell_results(cell_results, manifest)
-    _verify_marker_cells(marker_cells, chi_peak)
+    results, means, reply_manifests = _verify_cell_results(cell_results, manifest)
+    _marker_cells, marker_manifests = _verify_marker_cells(marker_cells, chi_peak)
+
+    # independence firewall (review round 3, F2): the gate itself must reject
+    # any cross-cohort identifier collision — the execution driver's check is
+    # not part of the advertised pure gate. Every reply run manifest is checked
+    # for disjointness against every marker manifest across all fields.
+    for reply_manifest in reply_manifests:
+        for marker_manifest in marker_manifests:
+            require_disjoint_manifests(reply_manifest, marker_manifest)
 
     monotonicity_passed = all(a < b for a, b in zip(means, means[1:]))
 

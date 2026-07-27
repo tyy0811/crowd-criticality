@@ -425,6 +425,62 @@ def test_gate_rejects_evidence_that_fails_provenance():
             _manifest(eligibility_evidence_sha256s=(wrong_sha,)))
 
 
+def _marker_grid_with_forged_first_manifest(**manifest_overrides):
+    """Rebuild the marker grid with cell 0's first seed result carrying a forged
+    (but still marker-valid) manifest, re-aggregated so the cell reproduces."""
+    grid = []
+    for cell_index, (plant_r, big) in enumerate(
+        zip(PLANT_R_GRID, (2, 3, 5, 9, 3, 2))
+    ):
+        results = [_marker_result(k, plant_r, big) for k in range(12)]
+        if cell_index == 0:
+            forged = dataclasses.replace(
+                results[0],
+                manifest=dataclasses.replace(
+                    results[0].manifest, **manifest_overrides))
+            results[0] = forged
+        grid.append(aggregate_marker_cell(plant_r, tuple(results)))
+    return tuple(grid)
+
+
+def test_gate_applies_reply_marker_disjointness_firewall_all_fields():
+    """Owner repro (round 3): the PURE gate must reject any cross-cohort
+    identifier collision itself, not only the execution driver. Every
+    forge-able manifest field is covered; seed_stream_id and raw_seed cannot
+    collide because the per-cohort manifest validators pin them to disjoint
+    registries (asserted separately below)."""
+    reply_manifest = _cell_results()[0]["runs"][0].manifest
+    field_forges = {
+        "run_id": {"run_id": reply_manifest.run_id},
+        "frame_id": {"frame_id": reply_manifest.frame_id},
+        "round_ids": {"round_ids": reply_manifest.round_ids + (2, 3, 4, 5, 6, 7)},
+        "event_ids": {"event_ids": (reply_manifest.event_ids[0],)
+                      + tuple(f"marker:post:{i + 1}" for i in range(MARKER_ROOT_COUNT - 1))},
+        "pair_ids": {"pair_ids": (reply_manifest.pair_ids[0],)},
+        "assignment_ids": {"assignment_ids": (reply_manifest.assignment_ids[0],)},
+    }
+    for field, override in field_forges.items():
+        forged_grid = _marker_grid_with_forged_first_manifest(**override)
+        peak = locate_chi_peak(forged_grid)
+        with pytest.raises(ValueError, match=field):
+            evaluate_recoverability_gate(
+                _cell_results(), forged_grid, peak, _manifest())
+
+
+def test_reply_and_marker_seed_registries_are_structurally_disjoint():
+    """seed_stream_id and raw_seed can never collide between a VALID reply and
+    a VALID marker manifest: the two cohorts are pinned to disjoint stream
+    labels and seed registries by their own manifest validators."""
+    from critaudit.sim.controls.causal_probe_control import CONTROL_SEED_STREAM
+    from critaudit.sim.controls.causal_probe_marker_control import MARKER_SEED_STREAM
+    assert CONTROL_SEED_STREAM != MARKER_SEED_STREAM
+    derived = {
+        derive_cell_seed(seed, cell)
+        for seed in RECOVERABILITY_SEEDS for cell in range(len(PLANT_R_GRID))
+    }
+    assert derived.isdisjoint(set(MARKER_SEEDS))
+
+
 def test_gate_rejects_forged_marker_cells_and_peak():
     marker_cells = _marker_grid()
     peak = locate_chi_peak(marker_cells)
