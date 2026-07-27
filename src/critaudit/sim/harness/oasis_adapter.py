@@ -236,12 +236,16 @@ def load_frame_eligibility_evidence(frame, database_path, trace_rows):
     root parent is the case for which all three registered same-actions land natively on the
     parent itself: a comment records `post_id = parent`, and the installed platform's
     `quote_post`/`repost` on a `common` (root) post record `original_post_id = parent`
-    (platform.py). For a derived (non-root) parent, the same `quote_post`/`repost` path
-    resolves a `quote`/`repost` source to its `root_post_id` rather than the parent, so a
-    native quote/repost OF the parent is not recorded against it; requiring a root parent is
-    therefore the conservative condition under which the complete same-action opportunity is
-    known to hold, not a claim about every post type's redirect behavior. The dedicated news
-    user is identified by its DB row, and `validate_frame_provenance` enforces its exclusion."""
+    (platform.py; `_get_post_type` classifies the source, then the `common` branch keeps the
+    source id). For a DERIVED (non-root) parent this no longer holds for all three actions,
+    and the exact resolution is action- and type-specific — e.g. `quote_post` of a
+    `quote`/`repost` source resolves to its `root_post_id`, and `repost` of a `repost`
+    resolves to root, so a native quote/repost is not recorded against the parent; whereas
+    `repost` of a `quote` KEEPS the quote as `original_post_id`. Because at least one native
+    same-action is lost for any derived parent, requiring a root parent is the conservative
+    sufficient condition under which the complete opportunity is known to hold — NOT a claim
+    that every derived same-action redirects to root. The dedicated news user is identified by
+    its DB row, and `validate_frame_provenance` enforces its exclusion."""
     validate_sampling_frame(frame)
     con = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
     try:
