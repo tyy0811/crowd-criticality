@@ -234,6 +234,36 @@ class CausalRefreshController:
             self._max_seen_round = round_id
         return stratum_id
 
+    def _assert_no_selection_isolation(
+        self, agent_id: int, round_id: int, background_posts: tuple
+    ) -> None:
+        """Fail closed if a no-selection draw's returned background exposes a
+        registered parent to this recipient: a same-round candidate parent for
+        this agent-round, or a parent registered to one of this agent's
+        later-round strata that remains undrawn."""
+        same_round_parents = {
+            pair.parent_item_id for pair in self._frame.candidate_pairs
+            if pair.agent_id == agent_id and pair.round_id == round_id
+        }
+        future_pending_parents = {
+            pair.parent_item_id for pair in self._frame.candidate_pairs
+            if pair.agent_id == agent_id and pair.round_id > round_id
+            and pair.stratum_id not in self._drawn_strata
+        }
+        served = {post_item_id(post) for post in background_posts}
+        same_leak = same_round_parents & served
+        if same_leak:
+            raise ValueError(
+                f"isolation breach: same-round registered parent(s) "
+                f"{sorted(same_leak)!r} served organically to recipient "
+                f"{agent_id} on a no-selection draw (fail-closed)")
+        future_leak = future_pending_parents & served
+        if future_leak:
+            raise ValueError(
+                f"isolation breach: future-round registered parent(s) "
+                f"{sorted(future_leak)!r} served to recipient {agent_id} on a "
+                f"no-selection draw before their stratum draw (fail-closed)")
+
     def _draw_selection(self, stratum_id: str) -> CandidatePair | None:
         uniform = float(self._selection_rng.random())
         if not 0.0 <= uniform < 1.0 or not math.isfinite(uniform):
@@ -325,6 +355,14 @@ class CausalRefreshController:
         self._drawn_strata.add(stratum_id)
 
         if pair is None:
+            # No experimental item is served, so the invariant "a registered
+            # parent reaches a recipient's feed only through controlled serving"
+            # must be checked directly on the returned background — the strip/
+            # serve path in _build_feed does not run here. A same-round
+            # candidate parent for this stratum, or a future-round undrawn
+            # parent for this agent, appearing organically is an uncontrolled
+            # exposure (fail-closed).
+            self._assert_no_selection_isolation(agent_id, round_id, background_posts)
             self._draws.append(
                 StratumDraw(
                     frame_id=self._frame.frame_id,

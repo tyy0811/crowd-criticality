@@ -542,6 +542,66 @@ def test_non_finite_treatment_draw_fails_closed(db_path):
         controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
 
 
+def test_no_selection_same_round_parent_leak_fails_closed(db_path):
+    """A same-round candidate parent appearing organically in a NO-SELECTION
+    draw's background is an uncontrolled exposure and must raise."""
+    controller = _controller(db_path, _Stream(0.85), _Stream())
+    background = (_post_dict(db_path, 1), _post_dict(db_path, 5))
+    with pytest.raises(ValueError, match="same-round"):
+        controller.refresh(20, 3, background)
+
+
+def _two_round_single_parent_frame() -> SamplingFrame:
+    """Agent 20 has post:1 at round 3 and post:2 at round 4 — the two parents
+    are in DISJOINT rounds, so a round-3 no-selection draw can expose post:2 as
+    a purely future-round leak (never a same-round one)."""
+    return SamplingFrame(
+        frame_id="frame:refresh:tworound",
+        parent_records=(
+            ParentEligibility("post:1", author_agent_id=10, created_round=1),
+            ParentEligibility("post:2", author_agent_id=11, created_round=2),
+        ),
+        excluded_recipient_agent_ids=(10, 11, 99),
+        candidate_pairs=(
+            CandidatePair(
+                pair_id="pair:1", parent_item_id="post:1", agent_id=20, round_id=3,
+                stratum_id="agent:20:round:3", selection_probability=0.4,
+                treatment_probability=0.5, parent_first_readable_round=3,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+            CandidatePair(
+                pair_id="pair:2", parent_item_id="post:2", agent_id=20, round_id=4,
+                stratum_id="agent:20:round:4", selection_probability=0.4,
+                treatment_probability=0.5, parent_first_readable_round=4,
+                prior_exposure_count=0, complete_same_action_opportunity=True),
+        ),
+    )
+
+
+def test_no_selection_future_round_parent_leak_fails_closed(db_path):
+    """A future-round undrawn parent appearing in a NO-SELECTION draw's
+    background is a pre-draw exposure breach and must raise."""
+    controller = CausalRefreshController(
+        _two_round_single_parent_frame(),
+        _Stream(0.85),
+        _Stream(),
+        parent_posts={"post:1": _post_dict(db_path, 1), "post:2": _post_dict(db_path, 2)},
+        filler_posts={"post:1": _post_dict(db_path, 3), "post:2": _post_dict(db_path, 4)},
+    )
+    background = (_post_dict(db_path, 2), _post_dict(db_path, 5))
+    with pytest.raises(ValueError, match="future-round"):
+        controller.refresh(20, 3, background)
+
+
+def test_no_selection_clean_background_is_returned_unchanged(db_path):
+    """A no-selection draw over a clean background still returns it verbatim."""
+    controller = _controller(db_path, _Stream(0.85), _Stream())
+    background = _background_refresh(db_path)(20, 3)
+    feed = controller.refresh(20, 3, background)
+    assert feed is background
+    (draw,) = controller.draws
+    assert draw.selected_pair_id is None
+
+
 # --- refresh isolation: pending-exposure guard -------------------------------------------------
 
 
