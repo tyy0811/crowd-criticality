@@ -31,8 +31,6 @@ from critaudit.sim.harness.causal_probe_records import (
     Outcome,
     frame_eligibility_evidence_sha256,
     frame_eligibility_evidence_to_bytes,
-    sampling_frame_sha256,
-    sampling_frame_to_bytes,
 )
 from critaudit.sim.harness.causal_probe_validation import (
     validate_frame_provenance,
@@ -334,9 +332,8 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
 
         await env.step({})  # -> round 1
 
-        # frame + eligibility evidence hash-verified BEFORE the first draw
-        frame_bytes = sampling_frame_to_bytes(frame)
-        frame_sha = sampling_frame_sha256(frame)
+        # eligibility evidence hash-verified BEFORE the first draw (the frame
+        # bytes/hash on the returned run come from controller.frame_bytes below)
         evidence = load_frame_eligibility_evidence(
             frame, database_path, read_trace_rows(database_path))
         validate_frame_provenance(frame, evidence)
@@ -388,6 +385,10 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
     finally:
         await env.close()
 
+    # Mandatory run-boundary frame-integrity check (frame-integrity amendment):
+    # the controller's private operational snapshot must still match its
+    # construction-time canonical bytes BEFORE any outcome/artifact is produced.
+    controller.assert_run_frame_intact()
     outcomes = collect_causal_outcomes(controller, database_path)
     manifest = ProbeManifest(
         run_id=run_id,
@@ -402,8 +403,10 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
     )
     return ScriptedControlRun(
         manifest=manifest,
-        frame_bytes=frame_bytes,
-        frame_sha256=frame_sha,
+        # immune canonical bytes/hash from the controller's private snapshot,
+        # not a re-serialization of the caller's (mutable) frame object
+        frame_bytes=controller.frame_bytes,
+        frame_sha256=controller.frame_sha256,
         eligibility_evidence_bytes=evidence_bytes,
         eligibility_evidence_sha256=evidence_sha,
         draws=controller.draws,

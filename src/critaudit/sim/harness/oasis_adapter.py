@@ -402,6 +402,10 @@ def persist_evidence_artifacts(directory, evidence):
 def export_causal_run(directory, *, controller, evidence, db_path):
     """OPT-IN causal export surface: frame + evidence artifacts and the complete causal
     ledgers. The default exporter (export_harness_run) schema and bytes are untouched."""
+    # Mandatory run-boundary frame-integrity check before producing any artifact
+    # (frame-integrity amendment): the controller's private operational snapshot
+    # must still match its construction-time canonical bytes.
+    controller.assert_run_frame_intact()
     persist_frame_artifacts(directory, controller.frame)
     persist_evidence_artifacts(directory, evidence)
     validate_frame_provenance(controller.frame, evidence)

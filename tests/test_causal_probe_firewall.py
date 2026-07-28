@@ -314,23 +314,40 @@ def _controller(frame):
                       "post:2": {"post_id": 9, "user_id": 12}})
 
 
-def test_dynamically_added_pair_fails_closed():
+def _immune_reference():
+    ref = _controller(_frame())
+    feed = ref.refresh(20, 3, ({"post_id": 5},))
+    ref.assert_run_frame_intact()
+    return feed, ref.draws
+
+
+def test_dynamically_added_pair_is_immune():
+    """Frame-integrity amendment: a pair smuggled into the CALLER's frame after
+    construction cannot enter the run — the controller draws from a private
+    detached snapshot. (Was fail-closed raise; now immunity — the stronger
+    guarantee that mutation cannot influence the frozen run.)"""
+    ref_feed, ref_draws = _immune_reference()
     frame = _frame()
     controller = _controller(frame)
     smuggled = replace(frame.candidate_pairs[0], pair_id="pair:smuggled",
                        stratum_id="agent:20:round:9", round_id=9,
                        parent_first_readable_round=9)
     object.__setattr__(frame, "candidate_pairs", frame.candidate_pairs + (smuggled,))
-    with pytest.raises(ValueError, match="frame content changed"):
-        controller.refresh(20, 3, ({"post_id": 5},))
+    feed = controller.refresh(20, 3, ({"post_id": 5},))
+    assert feed == ref_feed
+    assert controller.draws == ref_draws
+    controller.assert_run_frame_intact()
 
 
-def test_changed_frame_hash_fails_closed():
+def test_changed_frame_hash_is_immune():
+    ref_feed, ref_draws = _immune_reference()
     frame = _frame()
     controller = _controller(frame)
     object.__setattr__(frame, "frame_id", "frame:tampered")
-    with pytest.raises(ValueError, match="frame content changed"):
-        controller.refresh(20, 3, ({"post_id": 5},))
+    feed = controller.refresh(20, 3, ({"post_id": 5},))
+    assert feed == ref_feed
+    assert controller.draws == ref_draws         # draws carry the snapshot frame_id
+    controller.assert_run_frame_intact()
 
 
 def test_denominator_is_never_reconstructed_from_observed_assignments():

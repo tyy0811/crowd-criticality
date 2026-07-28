@@ -413,37 +413,77 @@ def test_two_strata_for_one_agent_round_fail_closed(db_path):
         )
 
 
-def test_mutable_frame_content_fails_closed(db_path):
-    frame = _frame()
-    controller = CausalRefreshController(
-        frame,
-        _Stream(0.10),
-        _Stream(0.10),
+def _build_controller(db_path, selection, treatment, frame=None):
+    return CausalRefreshController(
+        frame if frame is not None else _frame(),
+        selection,
+        treatment,
         parent_posts={"post:1": _post_dict(db_path, 1), "post:2": _post_dict(db_path, 2)},
         filler_posts={"post:1": _post_dict(db_path, 3), "post:2": _post_dict(db_path, 4)},
     )
+
+
+def _reference_run(db_path):
+    """The un-tampered draws/assignments/feed for the standard step, to compare
+    immunity cases against."""
+    ref = _build_controller(db_path, _Stream(0.10), _Stream(0.10))
+    feed = ref.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    ref.assert_run_frame_intact()
+    return feed, ref.draws, ref.assignments
+
+
+def test_original_frame_top_level_mutation_is_immune(db_path):
+    """Frame-integrity amendment: mutating the CALLER's frame after construction
+    cannot influence the run — the controller operates on a private detached
+    snapshot. (Was: refresh raised; posture is now immunity.)"""
+    ref_feed, ref_draws, ref_assignments = _reference_run(db_path)
+    frame = _frame()
+    controller = _build_controller(db_path, _Stream(0.10), _Stream(0.10), frame=frame)
     object.__setattr__(frame, "frame_id", "frame:tampered")
-    with pytest.raises(ValueError, match="frame"):
-        controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    feed = controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    assert feed == ref_feed
+    assert controller.draws == ref_draws          # draws carry the SNAPSHOT frame_id
+    assert controller.assignments == ref_assignments
+    controller.assert_run_frame_intact()          # no PRIVATE tampering -> passes
 
 
-def test_nested_record_mutation_fails_closed(db_path):
-    """Regression: `object.__setattr__` on a NESTED frozen record (a
-    CandidatePair inside candidate_pairs) leaves the top-level tuple identity
-    intact, so an identity-only integrity check would miss it. The frame guard
-    must re-hash the full content and raise. (Guards against a future
-    fast-path optimization that only compares top-level field identities.)"""
+def test_original_frame_nested_record_mutation_is_immune(db_path):
+    """A nested-record mutation that WOULD change the selection if it leaked
+    (0.4 -> 0.05 flips which pair the 0.10 uniform selects) leaves the run
+    unchanged, because the controller reads the detached snapshot."""
+    ref_feed, ref_draws, ref_assignments = _reference_run(db_path)
     frame = _frame()
-    controller = CausalRefreshController(
-        frame,
-        _Stream(0.10),
-        _Stream(0.10),
-        parent_posts={"post:1": _post_dict(db_path, 1), "post:2": _post_dict(db_path, 2)},
-        filler_posts={"post:1": _post_dict(db_path, 3), "post:2": _post_dict(db_path, 4)},
-    )
-    object.__setattr__(frame.candidate_pairs[0], "selection_probability", 0.3)
-    with pytest.raises(ValueError, match="frame"):
-        controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    controller = _build_controller(db_path, _Stream(0.10), _Stream(0.10), frame=frame)
+    object.__setattr__(frame.candidate_pairs[0], "selection_probability", 0.05)
+    feed = controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    assert feed == ref_feed
+    assert controller.draws == ref_draws
+    assert controller.assignments == ref_assignments
+
+
+def test_returned_frame_mutation_is_immune(db_path):
+    """Mutating the object returned by `controller.frame` (a fresh decode) does
+    not affect the run, and a subsequent access returns a clean decode."""
+    ref_feed, ref_draws, _ = _reference_run(db_path)
+    controller = _build_controller(db_path, _Stream(0.10), _Stream(0.10))
+    returned = controller.frame
+    object.__setattr__(returned.candidate_pairs[0], "selection_probability", 0.05)
+    feed = controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    assert feed == ref_feed
+    assert controller.draws == ref_draws
+    assert controller.frame.candidate_pairs[0].selection_probability == 0.4
+
+
+def test_direct_private_snapshot_mutation_fails_at_finalization(db_path):
+    """Direct tampering of the private snapshot is outside the supported API,
+    but persistent mutation must still FAIL at the mandatory run boundary."""
+    controller = _build_controller(db_path, _Stream(0.10), _Stream(0.10))
+    controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+    object.__setattr__(
+        controller._operational_frame.candidate_pairs[0],
+        "selection_probability", 0.05)
+    with pytest.raises(ValueError, match="operational frame content changed"):
+        controller.assert_run_frame_intact()
 
 
 def test_nontuple_candidate_pairs_fail_closed(db_path):

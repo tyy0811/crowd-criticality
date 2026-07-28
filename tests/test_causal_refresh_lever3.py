@@ -24,17 +24,17 @@ class NaiveCausalRefreshController(CausalRefreshController):
 
     def _agent_pairs(self, agent_id):
         return tuple(
-            pair for pair in self._frame.candidate_pairs
+            pair for pair in self._operational_frame.candidate_pairs
             if pair.agent_id == agent_id)
 
     def _same_round_parents(self, agent_id, round_id):
         return frozenset(
-            pair.parent_item_id for pair in self._frame.candidate_pairs
+            pair.parent_item_id for pair in self._operational_frame.candidate_pairs
             if pair.agent_id == agent_id and pair.round_id == round_id)
 
     def _future_undrawn_parents(self, agent_id, round_id):
         return {
-            pair.parent_item_id for pair in self._frame.candidate_pairs
+            pair.parent_item_id for pair in self._operational_frame.candidate_pairs
             if pair.agent_id == agent_id and pair.round_id > round_id
             and pair.stratum_id not in self._drawn_strata}
 

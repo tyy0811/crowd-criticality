@@ -23,7 +23,9 @@ from .causal_probe_records import (
     CandidatePair,
     SamplingFrame,
     StratumDraw,
+    sampling_frame_from_bytes,
     sampling_frame_sha256,
+    sampling_frame_to_bytes,
 )
 from .causal_probe_validation import validate_sampling_frame
 
@@ -97,8 +99,19 @@ class CausalRefreshController:
         filler_posts: Mapping[str, object],
     ) -> None:
         validate_sampling_frame(frame)
-        self._frame = frame
+        # Frame-integrity amendment (2026-07-28): the controller operates on a
+        # PRIVATE detached snapshot decoded from the immutable canonical bytes,
+        # never on the caller's frame object. External mutation of the caller's
+        # frame (top-level or nested record) therefore cannot influence draws,
+        # feeds, traces, or ledgers — so `refresh` no longer re-hashes per call.
+        # `_operational_frame` is never exposed; `frame` returns a fresh decode.
+        # A mandatory `assert_run_frame_intact()` re-checks the snapshot at the
+        # run boundary before outcomes/artifacts (catches direct private
+        # tampering, which is outside the supported API).
+        self._frame_bytes = sampling_frame_to_bytes(frame)
         self._frame_sha256 = sampling_frame_sha256(frame)
+        self._operational_frame = sampling_frame_from_bytes(self._frame_bytes)
+        frame = self._operational_frame  # build everything below from the snapshot
         self._selection_rng = selection_rng
         self._treatment_rng = treatment_rng
 
@@ -170,11 +183,28 @@ class CausalRefreshController:
 
     @property
     def frame(self) -> SamplingFrame:
-        return self._frame
+        # A FRESH decode of the canonical bytes on every access — never the
+        # private operational snapshot. Mutating the returned object cannot
+        # affect the run.
+        return sampling_frame_from_bytes(self._frame_bytes)
+
+    @property
+    def frame_bytes(self) -> bytes:
+        return self._frame_bytes
 
     @property
     def frame_sha256(self) -> str:
         return self._frame_sha256
+
+    def assert_run_frame_intact(self) -> None:
+        """Mandatory run-boundary integrity check: the private operational frame
+        must still serialize to the construction-time canonical bytes. Call
+        before producing any outcome or artifact. Catches persistent direct
+        private-state tampering (outside the supported API)."""
+        if sampling_frame_to_bytes(self._operational_frame) != self._frame_bytes:
+            raise ValueError(
+                "operational frame content changed after controller construction"
+            )
 
     @property
     def draws(self) -> tuple[StratumDraw, ...]:
@@ -240,12 +270,6 @@ class CausalRefreshController:
                 f"isolation breach: registered parent(s) {sorted(leaked)!r} "
                 f"served to recipient {agent_id} in round {round_id} before "
                 f"the stratum draw (fail-closed)")
-
-    def _check_frame_unchanged(self) -> None:
-        if sampling_frame_sha256(self._frame) != self._frame_sha256:
-            raise ValueError(
-                "sampling frame content changed after controller construction"
-            )
 
     def _enter_stratum(self, agent_id: int, round_id: int) -> str:
         stratum_id = self._stratum_by_agent_round.get((agent_id, round_id))
@@ -365,8 +389,12 @@ class CausalRefreshController:
     def refresh(
         self, agent_id: int, round_id: int, background_posts: tuple
     ) -> tuple:
-        """Serve one stratum draw; log the complete ledger before returning."""
-        self._check_frame_unchanged()
+        """Serve one stratum draw; log the complete ledger before returning.
+
+        No per-refresh frame re-hash: the controller operates on its private
+        detached snapshot, so the caller's frame cannot influence the run.
+        Integrity is re-checked once at the run boundary via
+        `assert_run_frame_intact()`."""
         if type(agent_id) is not int or type(round_id) is not int:
             raise TypeError("agent_id and round_id must be exactly int")
         if type(background_posts) is not tuple:
@@ -387,7 +415,7 @@ class CausalRefreshController:
             self._assert_no_selection_isolation(agent_id, round_id, background_posts)
             self._draws.append(
                 StratumDraw(
-                    frame_id=self._frame.frame_id,
+                    frame_id=self._operational_frame.frame_id,
                     stratum_id=stratum_id,
                     selected_pair_id=None,
                 )
@@ -402,14 +430,14 @@ class CausalRefreshController:
             pair, treated, background_posts)
         self._draws.append(
             StratumDraw(
-                frame_id=self._frame.frame_id,
+                frame_id=self._operational_frame.frame_id,
                 stratum_id=stratum_id,
                 selected_pair_id=pair.pair_id,
             )
         )
         assignment = Assignment(
             assignment_id=f"assignment:{pair.pair_id}",
-            frame_id=self._frame.frame_id,
+            frame_id=self._operational_frame.frame_id,
             pair_id=pair.pair_id,
             filler_item_id=self._filler_item_ids[pair.parent_item_id],
             treated=treated,
