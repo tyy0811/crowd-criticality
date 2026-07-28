@@ -427,6 +427,25 @@ def test_mutable_frame_content_fails_closed(db_path):
         controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
 
 
+def test_nested_record_mutation_fails_closed(db_path):
+    """Regression: `object.__setattr__` on a NESTED frozen record (a
+    CandidatePair inside candidate_pairs) leaves the top-level tuple identity
+    intact, so an identity-only integrity check would miss it. The frame guard
+    must re-hash the full content and raise. (Guards against a future
+    fast-path optimization that only compares top-level field identities.)"""
+    frame = _frame()
+    controller = CausalRefreshController(
+        frame,
+        _Stream(0.10),
+        _Stream(0.10),
+        parent_posts={"post:1": _post_dict(db_path, 1), "post:2": _post_dict(db_path, 2)},
+        filler_posts={"post:1": _post_dict(db_path, 3), "post:2": _post_dict(db_path, 4)},
+    )
+    object.__setattr__(frame.candidate_pairs[0], "selection_probability", 0.3)
+    with pytest.raises(ValueError, match="frame"):
+        controller.refresh(20, 3, _background_refresh(db_path)(20, 3))
+
+
 def test_nontuple_candidate_pairs_fail_closed(db_path):
     frame = _frame()
     with pytest.raises(TypeError):

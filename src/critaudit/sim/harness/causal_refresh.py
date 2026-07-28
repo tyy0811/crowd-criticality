@@ -139,6 +139,13 @@ class CausalRefreshController:
         self._pairs_by_stratum: dict[str, tuple[CandidatePair, ...]] = {}
         self._stratum_by_agent_round: dict[tuple[int, int], str] = {}
         self._round_of_stratum: dict[str, int] = {}
+        # Construction-fixed isolation indices (built once, never mutated; values
+        # are immutable tuples/frozensets). They make the per-refresh isolation
+        # checks O(this agent's pairs) instead of O(total candidate_pairs); see
+        # the parent-set helpers below. Frame order is preserved but the helpers'
+        # consumers all build sets, so ordering is immaterial to behavior.
+        self._pairs_by_agent: dict[int, tuple[CandidatePair, ...]] = {}
+        _same_round: dict[tuple[int, int], set[str]] = {}
         for pair in frame.candidate_pairs:
             self._pairs_by_stratum.setdefault(pair.stratum_id, ())
             self._pairs_by_stratum[pair.stratum_id] += (pair,)
@@ -146,6 +153,14 @@ class CausalRefreshController:
                 pair.stratum_id
             )
             self._round_of_stratum[pair.stratum_id] = pair.round_id
+            self._pairs_by_agent.setdefault(pair.agent_id, ())
+            self._pairs_by_agent[pair.agent_id] += (pair,)
+            _same_round.setdefault(
+                (pair.agent_id, pair.round_id), set()
+            ).add(pair.parent_item_id)
+        self._same_round_parents_by_agent_round: dict[tuple[int, int], frozenset] = {
+            key: frozenset(values) for key, values in _same_round.items()
+        }
 
         self._draws: list[StratumDraw] = []
         self._assignments: list[Assignment] = []
@@ -176,6 +191,31 @@ class CausalRefreshController:
     def has_stratum(self, agent_id: int, round_id: int) -> bool:
         return (agent_id, round_id) in self._stratum_by_agent_round
 
+    # --- parent-set lookup seam (overridable; the ONLY difference between the
+    #     production controller and the test-only naive-scan reference). The
+    #     isolation guards below call exclusively through these; the production
+    #     bodies use the construction-fixed indices, the naive reference
+    #     overrides them with full-frame comprehensions. -----------------------
+    def _agent_pairs(self, agent_id: int) -> tuple[CandidatePair, ...]:
+        """Every candidate pair registered to this agent (all its strata)."""
+        return self._pairs_by_agent.get(agent_id, ())
+
+    def _same_round_parents(self, agent_id: int, round_id: int) -> frozenset:
+        """Parent item IDs of this agent's pairs in exactly `round_id`."""
+        return self._same_round_parents_by_agent_round.get(
+            (agent_id, round_id), frozenset()
+        )
+
+    def _future_undrawn_parents(self, agent_id: int, round_id: int) -> set:
+        """Parent item IDs of this agent's LATER-round pairs whose stratum is
+        still undrawn (drawn-state-dependent, so derived at call time)."""
+        return {
+            pair.parent_item_id
+            for pair in self._agent_pairs(agent_id)
+            if pair.round_id > round_id
+            and pair.stratum_id not in self._drawn_strata
+        }
+
     def assert_no_pending_exposure(
         self, agent_id: int, round_id: int, posts: tuple
     ) -> None:
@@ -188,9 +228,8 @@ class CausalRefreshController:
         unregistered round serving the future experimental parent)."""
         pending_parents = {
             pair.parent_item_id
-            for pair in self._frame.candidate_pairs
-            if pair.agent_id == agent_id
-            and pair.stratum_id not in self._drawn_strata
+            for pair in self._agent_pairs(agent_id)
+            if pair.stratum_id not in self._drawn_strata
         }
         if not pending_parents:
             return
@@ -241,15 +280,8 @@ class CausalRefreshController:
         registered parent to this recipient: a same-round candidate parent for
         this agent-round, or a parent registered to one of this agent's
         later-round strata that remains undrawn."""
-        same_round_parents = {
-            pair.parent_item_id for pair in self._frame.candidate_pairs
-            if pair.agent_id == agent_id and pair.round_id == round_id
-        }
-        future_pending_parents = {
-            pair.parent_item_id for pair in self._frame.candidate_pairs
-            if pair.agent_id == agent_id and pair.round_id > round_id
-            and pair.stratum_id not in self._drawn_strata
-        }
+        same_round_parents = self._same_round_parents(agent_id, round_id)
+        future_pending_parents = self._future_undrawn_parents(agent_id, round_id)
         served = {post_item_id(post) for post in background_posts}
         same_leak = same_round_parents & served
         if same_leak:
@@ -296,15 +328,8 @@ class CausalRefreshController:
             raise ValueError("cannot serve an experimental item into an empty feed")
         background_ids = [post_item_id(post) for post in background_posts]
 
-        agent_pairs = [
-            candidate for candidate in self._frame.candidate_pairs
-            if candidate.agent_id == pair.agent_id
-        ]
-        later_pending_parents = {
-            candidate.parent_item_id for candidate in agent_pairs
-            if candidate.round_id > pair.round_id
-            and candidate.stratum_id not in self._drawn_strata
-        }
+        later_pending_parents = self._future_undrawn_parents(
+            pair.agent_id, pair.round_id)
         leaked_later = later_pending_parents & set(background_ids)
         if leaked_later:
             raise ValueError(
@@ -312,10 +337,7 @@ class CausalRefreshController:
                 f"{sorted(leaked_later)!r} served to recipient {pair.agent_id} "
                 f"before their stratum draw (fail-closed)")
 
-        same_round_parents = {
-            candidate.parent_item_id for candidate in agent_pairs
-            if candidate.round_id == pair.round_id
-        }
+        same_round_parents = self._same_round_parents(pair.agent_id, pair.round_id)
         strip = same_round_parents | {filler_item}
         parent_in_raw_background = parent_item in background_ids
         base = tuple(
