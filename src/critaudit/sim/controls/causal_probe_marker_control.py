@@ -288,7 +288,7 @@ async def _drive_recursive_marker_control(root_count, opportunities_per_parent,
                                           seed_stream_id, seed, database_path,
                                           response_probability):
     from oasis import ActionType, AgentGraph, SocialAgent, make
-    from oasis.social_platform.channel import Channel
+    from critaudit.sim.harness.causal_channel import LowLatencyChannel
     from oasis.social_platform.platform import Platform
     from oasis.social_platform.typing import RecsysType
 
@@ -309,7 +309,7 @@ async def _drive_recursive_marker_control(root_count, opportunities_per_parent,
 
     platform = Platform(
         db_path=database_path,
-        channel=Channel(),
+        channel=LowLatencyChannel(),
         recsys_type=RecsysType(hs.RECSYS_TYPE),
         refresh_rec_post_count=3,
         max_rec_post_len=5,

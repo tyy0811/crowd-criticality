@@ -233,7 +233,7 @@ def scripted_action_for_assignment(
 async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, seed,
                                         database_path, expected_evidence_sha256):
     from oasis import ActionType, AgentGraph, SocialAgent, make
-    from oasis.social_platform.channel import Channel
+    from critaudit.sim.harness.causal_channel import LowLatencyChannel
     from oasis.social_platform.platform import Platform
     from oasis.social_platform.typing import RecsysType
 
@@ -286,7 +286,7 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
 
     platform = _ScriptedControlPlatform(
         db_path=database_path,
-        channel=Channel(),
+        channel=LowLatencyChannel(),
         recsys_type=RecsysType(hs.RECSYS_TYPE),
         refresh_rec_post_count=3,
         max_rec_post_len=5,

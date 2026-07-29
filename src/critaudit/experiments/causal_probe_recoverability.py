@@ -491,7 +491,7 @@ async def _predraw_reply_setup(frame, database_path):
     or outcome. If this mirror ever drifts from the bridge, --execute fails closed
     on the evidence hash comparison."""
     from oasis import ActionType, AgentGraph, SocialAgent, make
-    from oasis.social_platform.channel import Channel
+    from critaudit.sim.harness.causal_channel import LowLatencyChannel
     from oasis.social_platform.platform import Platform
     from oasis.social_platform.typing import RecsysType
 
@@ -520,7 +520,7 @@ async def _predraw_reply_setup(frame, database_path):
 
     platform = Platform(
         db_path=database_path,
-        channel=Channel(),
+        channel=LowLatencyChannel(),
         recsys_type=RecsysType(hs.RECSYS_TYPE),
         refresh_rec_post_count=3,
         max_rec_post_len=5,
@@ -575,7 +575,7 @@ async def _predraw_marker_setup(database_path, root_count):
     """Marker pre-draw setup through root creation only: burn the disjoint-round
     offset, plant the roots, verify their ids, tear down before any cascade."""
     from oasis import ActionType, AgentGraph, SocialAgent, make
-    from oasis.social_platform.channel import Channel
+    from critaudit.sim.harness.causal_channel import LowLatencyChannel
     from oasis.social_platform.platform import Platform
     from oasis.social_platform.typing import RecsysType
 
@@ -591,7 +591,7 @@ async def _predraw_marker_setup(database_path, root_count):
         context_budget=1024)
     platform = Platform(
         db_path=database_path,
-        channel=Channel(),
+        channel=LowLatencyChannel(),
         recsys_type=RecsysType(hs.RECSYS_TYPE),
         refresh_rec_post_count=3,
         max_rec_post_len=5,
