@@ -104,3 +104,15 @@ env PYTHONPATH=src /Users/zenith/oasis_venv/bin/python -m critaudit.experiments.
 ```
 
 The runner refuses `--execute` without `--manifest`, checks the frozen frame hash against the manifest up front, recreates the banked eligibility-evidence hash in a dedicated pre-draw verification session before any draw, and enforces the same evidence hash pre-draw inside every live session. This amendment is a safety direction only; it authorizes nothing.
+
+## 8. Runtime replan (2026-07-28/29) — grid made feasible; forecast revised ~4 days → ~1–1.5 h
+
+The 2026-07-23 Task-8 run was owner-stopped (~4 h in, no result artifact) on a forecast blowout. The measured replan corrected two mis-attributions of mine and fixed the true bottleneck with three **runtime-only** changes in our own code (details + measured before/after in DECISIONS.md 2026-07-29):
+
+- **Lever 3** (`4f97b8a`) — index the controller's O(pairs) isolation scan (differential-equivalent; 210–451× isolation gate).
+- **Frame-integrity amendment** (`397a388`, bridge completion `6171480`) — private detached `_operational_frame`, no per-refresh 722 ms re-hash; posture changed detect→immune with a mandatory run-boundary `assert_run_frame_intact()`. Owner-approved.
+- **Lever 1** (`1f52136`, all-table A/B `461ee19`) — event-driven `LowLatencyChannel` (Future-only delivery), Task-8 constructors only.
+
+**No re-bank.** Frame/evidence/manifest/power hashes are unchanged (`045bd40c…`/`9980fbc1…`/`3553d946…`/`b4091ab1…`); the full-scale dry-run reproduces the banked manifest byte-identically under the new channel. Transport-equivalence proven by a concurrency-matched A/B (~303 agents) comparing hashes, `ProbeManifest`, ledgers, `R_reply` estimate, and canonical rows of all 17 OASIS tables (incl. `sqlite_sequence`).
+
+**Revised forecast (measured): ~1–1.5 hours, $0** (per action ~100 ms → ~1 ms; 72 reply runs ~69 h → ~44 min; markers + pre-draw small). Lever 2 (build-once) retired — it would save only ~20 min and is not worth its complexity. The **Task-8 owner stop remains binding**; this replan authorizes nothing.
