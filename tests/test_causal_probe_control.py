@@ -19,6 +19,7 @@ from critaudit.sim.controls.causal_probe_control import (
 from critaudit.sim.harness.causal_probe_records import (
     Assignment,
     ProbeManifest,
+    sampling_frame_from_bytes,
     sampling_frame_sha256,
     sampling_frame_to_bytes,
 )
@@ -303,3 +304,37 @@ def test_scripted_oasis_control_bridge(tmp_path):
     assert con.execute(
         "SELECT COUNT(*) FROM trace WHERE action = 'refresh'").fetchone()[0] == 0
     con.close()
+
+
+def test_bridge_carries_snapshot_immunity_through_manifest(monkeypatch, tmp_path):
+    """Frame-integrity completion (review 2026-07-29): a MID-RUN mutation of the
+    caller's frame (top-level id + a smuggled pair) after controller construction
+    must not influence comment routing or the manifest — the bridge reads a single
+    detached run_frame snapshot, not the caller's mutable frame."""
+    pytest.importorskip("oasis")
+    frame, truth = _build(parent_count=2, recipients_per_parent=2, plant_r=1.0, seed=7)
+    original_frame_id = frame.frame_id
+    original_pair_ids = tuple(pair.pair_id for pair in frame.candidate_pairs)
+
+    import critaudit.sim.harness.oasis_adapter as oa
+    real_collect = oa.collect_causal_outcomes
+
+    def _mutating_collect(controller, database_path):
+        # mid-run, before the manifest is built: tamper the CALLER's frame
+        object.__setattr__(frame, "frame_id", "frame:tampered-midrun")
+        smuggled = dataclasses.replace(frame.candidate_pairs[0], pair_id="pair:smuggled")
+        object.__setattr__(frame, "candidate_pairs", frame.candidate_pairs + (smuggled,))
+        return real_collect(controller, database_path)
+
+    monkeypatch.setattr(oa, "collect_causal_outcomes", _mutating_collect)
+
+    run = run_scripted_oasis_control(
+        frame, truth, run_id="run:immune",
+        seed_stream_id=CONTROL_SEED_STREAM, seed=7,
+        database_path=str(tmp_path / "immune.db"))
+
+    # manifest + returned bytes come from the snapshot, not the mid-run mutation
+    assert run.manifest.frame_id == original_frame_id
+    assert run.manifest.pair_ids == original_pair_ids
+    assert "pair:smuggled" not in run.manifest.pair_ids
+    assert sampling_frame_from_bytes(run.frame_bytes).frame_id == original_frame_id

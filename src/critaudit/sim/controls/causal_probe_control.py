@@ -362,13 +362,19 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
             frame, selection_rng, treatment_rng,
             parent_posts=parent_posts, filler_posts=filler_posts)
         controller_box.append(controller)
+        # Carry snapshot immunity through the WHOLE bridge: after construction,
+        # every frame read (comment routing + manifest fields) uses this one
+        # detached decode of the controller's snapshot, never the caller's
+        # (mutable) frame object. External mutation of `frame` post-construction
+        # therefore cannot influence routing or the manifest.
+        run_frame = controller.frame
 
         for recipient in recipients:
             result = await graph.get_agent(recipient).env.action.refresh()
             if result.get("success") is not True:
                 raise RuntimeError(f"control refresh failed: {result!r}")
 
-        pairs_by_id = {pair.pair_id: pair for pair in frame.candidate_pairs}
+        pairs_by_id = {pair.pair_id: pair for pair in run_frame.candidate_pairs}
         for assignment in controller.assignments:
             reply = scripted_action_for_assignment(assignment, truth)
             if reply is None:
@@ -392,13 +398,13 @@ async def _drive_scripted_oasis_control(frame, truth, run_id, seed_stream_id, se
     outcomes = collect_causal_outcomes(controller, database_path)
     manifest = ProbeManifest(
         run_id=run_id,
-        frame_id=frame.frame_id,
+        frame_id=run_frame.frame_id,
         seed_stream_id=seed_stream_id,
         raw_seed=int(seed),
-        root_ids=tuple(parent.parent_item_id for parent in frame.parent_records),
+        root_ids=tuple(parent.parent_item_id for parent in run_frame.parent_records),
         round_ids=(0, 1),
         event_ids=tuple(event_ids),
-        pair_ids=tuple(pair.pair_id for pair in frame.candidate_pairs),
+        pair_ids=tuple(pair.pair_id for pair in run_frame.candidate_pairs),
         assignment_ids=tuple(a.assignment_id for a in controller.assignments),
     )
     return ScriptedControlRun(
