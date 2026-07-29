@@ -19,15 +19,17 @@ from critaudit.sim.harness.causal_probe import estimate_r_reply
 
 
 def _canonical_db(path):
+    """Canonical dump of EVERY table in the database — enumerated from sqlite_master
+    (not a hard-coded list), including `sqlite_sequence` (the AUTOINCREMENT counter
+    state), so channel-induced insertion-order differences cannot hide in any table."""
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    out = {}
-    for table in ("user", "post", "comment", "trace", "rec", "follow"):
-        try:
-            rows = con.execute(f"SELECT * FROM {table}").fetchall()
-        except sqlite3.OperationalError:
-            out[table] = None
-            continue
-        out[table] = sorted(repr(row) for row in rows)   # canonical: content, order-independent
+    tables = sorted(
+        row[0] for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall())
+    out = {"__tables__": tables}
+    for table in tables:
+        rows = con.execute(f'SELECT * FROM "{table}"').fetchall()
+        out[table] = sorted(repr(row) for row in rows)   # content, order-independent
     con.close()
     return out
 
@@ -70,5 +72,12 @@ def test_channel_transport_equivalence_ab(tmp_path, monkeypatch):
     est_stock = estimate_r_reply(frame, stock.draws, stock.assignments, stock.outcomes)
     assert est_low == est_stock
 
-    # canonical DB rows identical (content, order-independent) across every table
-    assert _canonical_db(str(tmp_path / "low.db")) == _canonical_db(str(tmp_path / "stock.db"))
+    # canonical DB rows identical across EVERY table (enumerated from sqlite_master,
+    # incl. sqlite_sequence), not a hard-coded subset
+    low_db = _canonical_db(str(tmp_path / "low.db"))
+    stock_db = _canonical_db(str(tmp_path / "stock.db"))
+    # prove the comparison actually covers the full schema + the autoincrement state
+    assert low_db["__tables__"] == stock_db["__tables__"]
+    assert "sqlite_sequence" in low_db["__tables__"]
+    assert len(low_db["__tables__"]) > 6           # more than the old hard-coded list
+    assert low_db == stock_db
