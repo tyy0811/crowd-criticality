@@ -121,10 +121,11 @@ def _event_seq(item_id, parent_item_id, seq_by_item):
     return 0
 
 
-def export_harness_run(db_path, *, timestamp_col):
-    """Read the OASIS post/comment/trace tables into the normalized HarnessRun. `timestamp_col` is the
-    confirmed time column ('created_at' per the Task-1 recon). The DB is opened READ-ONLY so a source
-    trace (e.g. the committed recon fixture) can never be mutated.
+def load_harness_records(db_path, *, timestamp_col):
+    """Read the OASIS post/comment/trace tables into the normalized (events, refreshes,
+    action_by_item) triple. `timestamp_col` is the confirmed time column ('created_at' per the
+    Task-1 recon). The DB is opened READ-ONLY so a source trace (e.g. the committed recon
+    fixture) can never be mutated.
 
     Two passes over the data:
       1. `trace` -> REFRESH records (seq = trace rowid) AND an item_id -> trace rowid map for every
@@ -133,7 +134,11 @@ def export_harness_run(db_path, *, timestamp_col):
          and emit-seq share the one counter the round-granular read->emit tiebreaker needs.
     Fail-closed throughout: `_served_post_ids`/`_emit_item_id` raise on info-shape drift, the strict
     seq-join raises on an un-traced emit-with-parent, and `assemble_harness_run`'s `build_parent_root`
-    raises on an unresolvable/duplicate/out-of-order parent (surfaced, not swallowed)."""
+    raises on an unresolvable/duplicate/out-of-order parent (surfaced, not swallowed).
+
+    Third element = action_by_item (item_id -> traced emit action), the same dict pass 1 builds
+    for the authored-content cross-check — exposed here so downstream consumers (Task 3) can reuse
+    it without re-parsing the trace table."""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         # Pass 1: trace -> refreshes + emit(item_id) -> rowid AND -> action (the authored-content
@@ -177,6 +182,14 @@ def export_harness_run(db_path, *, timestamp_col):
                                       seq=_event_seq(item_id, parent, seq_by_item)))
     finally:
         con.close()
+    return events, refreshes, action_by_item
+
+
+def export_harness_run(db_path, *, timestamp_col):
+    """Read the OASIS post/comment/trace tables into the normalized HarnessRun. `timestamp_col` is the
+    confirmed time column ('created_at' per the Task-1 recon). Delegates to load_harness_records for
+    the strict two-pass parse (signature/behavior unchanged) and discards the action_by_item map."""
+    events, refreshes, _ = load_harness_records(db_path, timestamp_col=timestamp_col)
     return assemble_harness_run(events, refreshes)
 
 
