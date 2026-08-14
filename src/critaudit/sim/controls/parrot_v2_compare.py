@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import itertools
 
+from critaudit.sim.controls import parrot_v2_spec
 from critaudit.sim.controls.parrot_v2_records import decode_emission_record
 from critaudit.sim.harness.observables import GATED_OBSERVABLES
 
@@ -60,6 +61,9 @@ def _ledger_by_index(triple: dict, widths: list) -> dict:
 def manipulation_guard(triple: dict) -> dict:
     """Is the refresh ledger trustworthy across widths? See module docstring point 1."""
     widths = sorted(triple)
+
+    if set(triple) != set(parrot_v2_spec.WIDTHS):
+        return _guard_failure("width_mismatch")
 
     for w in widths:
         if triple[w]["width"] != w:

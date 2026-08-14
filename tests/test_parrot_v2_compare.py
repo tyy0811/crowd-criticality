@@ -96,3 +96,15 @@ def test_precedence_r3_over_r2():
                            run_failures=("w3 crashed",))["reading"] == "R3"
     # R1 when everything is clean
     assert overall_verdict([ok], [{"ok": True, "reason": None}])["reading"] == "R1"
+
+
+def test_guard_rejects_non_frozen_width_set():
+    # missing a frozen width
+    partial = {1: _payload(BASE, 1, L_A), 3: _payload(BASE, 3, L_B)}
+    g = manipulation_guard(partial)
+    assert g["ok"] is False and g["realized_contrast"] is False
+    # wrong member, internally self-consistent
+    wrong = {1: _payload(BASE, 1, L_A), 3: _payload(BASE, 3, L_B),
+             7: _payload(BASE, 7, L_B)}
+    g2 = manipulation_guard(wrong)
+    assert g2["ok"] is False and g2["realized_contrast"] is False
