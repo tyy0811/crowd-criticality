@@ -8,8 +8,11 @@ FROZEN = {
         "20f9257135841d5d30b07b324dc2102ce9c13a822a0608b1a1ac8ad198590e35",
     "src/critaudit/sim/harness/harness_spec.py":
         "472defb93d0ccda3c290b6c7909f17cdcb0af639c2d83517ee11f35ebd21abcd",
+    # Updated 2026-08-17 with the owner-authorized prospective §11 registration
+    # (append-only at EOF; local scope; §§0-10 byte-untouched). Prior pin:
+    # 996c42228da1a18771c6343b92b3c0fca8f1849a9ce70bc8af115cbb764eaa35.
     "PRE_REGISTRATION.md":
-        "996c42228da1a18771c6343b92b3c0fca8f1849a9ce70bc8af115cbb764eaa35",
+        "9a65f28eff3f9e37afe514641a06c6a61d3dad222d7bc4ecbd5a1e6b5c663bab",
 }
 
 def test_frozen_surfaces_unchanged():
