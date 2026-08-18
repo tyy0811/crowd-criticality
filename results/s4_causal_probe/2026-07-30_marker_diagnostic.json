@@ -1,0 +1,2829 @@
+{
+ "caveats": [
+  "selected-on-outcome (predeclared): any support selected by this ladder would have been chosen because it passes the locator \u2014 acceptable only for test-fixture-infrastructure purposes, and the basis must be recorded in any amendment. As executed, NOTHING was selected, so no selection bias enters any artifact.",
+  "panels are non-registered seed draws; the registered MARKER_SEEDS (2026072401-12) are one specific draw and were not evaluated (protocol keeps the registered registry out of the sweep). Given the measured per-seed argmax dispersion, the probability that the specific registered draw satisfies unanimity at 8x512 is of order 1e-5 to 1e-4 \u2014 not exactly zero, but the instrument cannot be relied on to pass.",
+  "the 4-rounds arm shows one boundary-argmax failure (4x256 panel C, argmax at plant 0.60): at rounds=4 the truncated-depth chi surface is qualitatively different; this is reported, not interpreted.",
+  "simulator equality was proven at 32x4; other supports rely on the structural-transfer argument stated in exact_equivalence_check.transfer_note."
+ ],
+ "exact_equivalence_check": {
+  "all_chi_equal": true,
+  "all_manifests_equal": true,
+  "all_tree_sizes_equal": true,
+  "mismatches": [],
+  "plants": [
+   0.6,
+   0.92,
+   0.97,
+   1.03,
+   1.08,
+   1.3
+  ],
+  "runs": 72,
+  "seeds": [
+   515201,
+   515202,
+   515203,
+   515204,
+   515205,
+   515206,
+   515207,
+   515208,
+   515209,
+   515210,
+   515211,
+   515212
+  ],
+  "support": {
+   "opportunities": 4,
+   "roots": 32,
+   "rounds": 4
+  },
+  "t_real_total_seconds": 55.18,
+  "t_sim_total_seconds": 0.049,
+  "transfer_note": "equivalence verified exhaustively at 32x4 (72/72 runs, tree sizes AND chi AND full manifests). Transfer to other supports is structural, not statistical: the driver loop has no support-dependent branches (read-verified); roots/rounds only change iteration counts of the identical draw/id logic."
+ },
+ "holdout": null,
+ "outcome": "NO CANDIDATE PASSED \u2014 all 14 ladder supports failed on every panel (42/42 evaluations). locate_chi_peak's 12/12 per-seed argmax unanimity was never satisfied; best observed consistency anywhere = 7/12 (4x512, panel B). The registered production support 8x512 failed on all three panels (5/12, 3/12, 2/12). Holdout and real-path confirmation not run (protocol: they apply only to a selected candidate; no added candidates, no adaptive retries).",
+ "pass_matrix": [
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.589712,
+     0.619542,
+     0.628415,
+     0.612039,
+     0.608856,
+     0.516177
+    ],
+    "consistency_count": 2,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 64,
+   "rounds": 4,
+   "sim_seconds": 0.066,
+   "verdict": {
+    "error": "seed argmax consistency failed: 2/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.672171,
+     0.683812,
+     0.654343,
+     0.599947,
+     0.60813,
+     0.554417
+    ],
+    "consistency_count": 2,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      0
+     ],
+     [
+      0
+     ],
+     [
+      0
+     ],
+     [
+      0
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 64,
+   "rounds": 4,
+   "sim_seconds": 0.066,
+   "verdict": {
+    "error": "seed argmax consistency failed: 2/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     3
+    ],
+    "aggregated_chi": [
+     0.579095,
+     0.619186,
+     0.61888,
+     0.653509,
+     0.619569,
+     0.555792
+    ],
+    "consistency_count": 3,
+    "per_seed_argmax_positions": [
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      5
+     ],
+     [
+      0
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 64,
+   "rounds": 4,
+   "sim_seconds": 0.06,
+   "verdict": {
+    "error": "seed argmax consistency failed: 3/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.572083,
+     0.683709,
+     0.677033,
+     0.651223,
+     0.636482,
+     0.559097
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 128,
+   "rounds": 4,
+   "sim_seconds": 0.129,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.656441,
+     0.681544,
+     0.66005,
+     0.65101,
+     0.621144,
+     0.568768
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      0
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 128,
+   "rounds": 4,
+   "sim_seconds": 0.123,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.642043,
+     0.687371,
+     0.673764,
+     0.661666,
+     0.619835,
+     0.577593
+    ],
+    "consistency_count": 3,
+    "per_seed_argmax_positions": [
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 128,
+   "rounds": 4,
+   "sim_seconds": 0.128,
+   "verdict": {
+    "error": "seed argmax consistency failed: 3/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.631886,
+     0.693869,
+     0.683994,
+     0.625004,
+     0.64432,
+     0.57051
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 256,
+   "rounds": 4,
+   "sim_seconds": 0.251,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.621058,
+     0.659832,
+     0.642148,
+     0.632861,
+     0.62007,
+     0.560329
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      0
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 256,
+   "rounds": 4,
+   "sim_seconds": 0.282,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     0
+    ],
+    "aggregated_chi": [
+     0.664314,
+     0.664205,
+     0.647266,
+     0.634019,
+     0.652157,
+     0.564464
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      0
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 256,
+   "rounds": 4,
+   "sim_seconds": 0.271,
+   "verdict": {
+    "error": "aggregated chi_resp maximum sits on the grid boundary (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.630768,
+     0.672312,
+     0.676524,
+     0.655106,
+     0.642309,
+     0.574337
+    ],
+    "consistency_count": 6,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 512,
+   "rounds": 4,
+   "sim_seconds": 0.531,
+   "verdict": {
+    "error": "seed argmax consistency failed: 6/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.606679,
+     0.681787,
+     0.666017,
+     0.652856,
+     0.638143,
+     0.565014
+    ],
+    "consistency_count": 7,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 512,
+   "rounds": 4,
+   "sim_seconds": 0.477,
+   "verdict": {
+    "error": "seed argmax consistency failed: 7/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.626148,
+     0.671299,
+     0.665269,
+     0.649435,
+     0.630265,
+     0.56357
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 512,
+   "rounds": 4,
+   "sim_seconds": 0.502,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.039798,
+     1.095713,
+     1.001537,
+     1.063816,
+     0.925329,
+     0.788528
+    ],
+    "consistency_count": 1,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      0
+     ],
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      5
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 32,
+   "rounds": 6,
+   "sim_seconds": 0.071,
+   "verdict": {
+    "error": "seed argmax consistency failed: 1/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.987821,
+     1.184238,
+     1.236672,
+     1.16865,
+     1.149515,
+     0.971109
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 32,
+   "rounds": 6,
+   "sim_seconds": 0.071,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.836008,
+     1.121955,
+     1.261343,
+     1.213816,
+     0.989349,
+     0.848747
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      0
+     ],
+     [
+      5
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 32,
+   "rounds": 6,
+   "sim_seconds": 0.066,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.849125,
+     1.039664,
+     1.157163,
+     1.075362,
+     1.110459,
+     0.85697
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 64,
+   "rounds": 6,
+   "sim_seconds": 0.102,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.002293,
+     1.190945,
+     1.148986,
+     0.979479,
+     1.008177,
+     0.932589
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      5
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 64,
+   "rounds": 6,
+   "sim_seconds": 0.116,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     3
+    ],
+    "aggregated_chi": [
+     0.915264,
+     1.110013,
+     1.099377,
+     1.152593,
+     1.076302,
+     0.932855
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 64,
+   "rounds": 6,
+   "sim_seconds": 0.115,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.829754,
+     1.243218,
+     1.178404,
+     1.147552,
+     1.085364,
+     0.978315
+    ],
+    "consistency_count": 6,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 128,
+   "rounds": 6,
+   "sim_seconds": 0.223,
+   "verdict": {
+    "error": "seed argmax consistency failed: 6/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.974079,
+     1.130464,
+     1.160937,
+     1.103745,
+     1.066325,
+     0.930732
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 128,
+   "rounds": 6,
+   "sim_seconds": 0.206,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.940339,
+     1.198859,
+     1.217615,
+     1.1764,
+     1.085998,
+     0.975033
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 128,
+   "rounds": 6,
+   "sim_seconds": 0.194,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.960105,
+     1.219311,
+     1.18402,
+     1.087826,
+     1.159103,
+     0.943811
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 256,
+   "rounds": 6,
+   "sim_seconds": 0.403,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.935974,
+     1.149215,
+     1.098017,
+     1.098616,
+     1.069881,
+     0.922621
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 256,
+   "rounds": 6,
+   "sim_seconds": 0.556,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.984712,
+     1.144562,
+     1.107151,
+     1.117594,
+     1.126439,
+     0.943511
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 256,
+   "rounds": 6,
+   "sim_seconds": 0.547,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.927898,
+     1.154932,
+     1.180211,
+     1.141812,
+     1.111539,
+     0.950932
+    ],
+    "consistency_count": 6,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 512,
+   "rounds": 6,
+   "sim_seconds": 0.849,
+   "verdict": {
+    "error": "seed argmax consistency failed: 6/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.879445,
+     1.172626,
+     1.158934,
+     1.127612,
+     1.09389,
+     0.943617
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 512,
+   "rounds": 6,
+   "sim_seconds": 0.805,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     0.935057,
+     1.176849,
+     1.155729,
+     1.143792,
+     1.09288,
+     0.953019
+    ],
+    "consistency_count": 6,
+    "per_seed_argmax_positions": [
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 512,
+   "rounds": 6,
+   "sim_seconds": 0.782,
+   "verdict": {
+    "error": "seed argmax consistency failed: 6/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.19762,
+     1.555542,
+     1.376304,
+     1.460426,
+     1.299691,
+     1.038535
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      5
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 32,
+   "rounds": 8,
+   "sim_seconds": 0.088,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     1.226493,
+     1.662004,
+     1.803963,
+     1.563723,
+     1.552249,
+     1.314194
+    ],
+    "consistency_count": 6,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      5
+     ],
+     [
+      1
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 32,
+   "rounds": 8,
+   "sim_seconds": 0.089,
+   "verdict": {
+    "error": "seed argmax consistency failed: 6/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.90923,
+     1.56841,
+     1.716582,
+     1.651924,
+     1.409756,
+     1.209323
+    ],
+    "consistency_count": 3,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ],
+     [
+      3
+     ],
+     [
+      5
+     ],
+     [
+      5
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 32,
+   "rounds": 8,
+   "sim_seconds": 0.079,
+   "verdict": {
+    "error": "seed argmax consistency failed: 3/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     0.970271,
+     1.536067,
+     1.783569,
+     1.536262,
+     1.601522,
+     1.171371
+    ],
+    "consistency_count": 3,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 64,
+   "rounds": 8,
+   "sim_seconds": 0.151,
+   "verdict": {
+    "error": "seed argmax consistency failed: 3/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.181683,
+     1.636867,
+     1.611984,
+     1.379055,
+     1.375525,
+     1.241507
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      5
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 64,
+   "rounds": 8,
+   "sim_seconds": 0.166,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     3
+    ],
+    "aggregated_chi": [
+     1.174933,
+     1.59586,
+     1.595891,
+     1.650575,
+     1.542607,
+     1.283167
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      0
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      0
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 64,
+   "rounds": 8,
+   "sim_seconds": 0.153,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.0066,
+     1.833599,
+     1.658156,
+     1.662585,
+     1.533099,
+     1.312072
+    ],
+    "consistency_count": 7,
+    "per_seed_argmax_positions": [
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 128,
+   "rounds": 8,
+   "sim_seconds": 0.29,
+   "verdict": {
+    "error": "seed argmax consistency failed: 7/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     1.179699,
+     1.578147,
+     1.656792,
+     1.574585,
+     1.502601,
+     1.228334
+    ],
+    "consistency_count": 4,
+    "per_seed_argmax_positions": [
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 128,
+   "rounds": 8,
+   "sim_seconds": 0.312,
+   "verdict": {
+    "error": "seed argmax consistency failed: 4/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     1.114746,
+     1.673887,
+     1.733321,
+     1.700163,
+     1.607561,
+     1.325106
+    ],
+    "consistency_count": 2,
+    "per_seed_argmax_positions": [
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 128,
+   "rounds": 8,
+   "sim_seconds": 0.302,
+   "verdict": {
+    "error": "seed argmax consistency failed: 2/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.160256,
+     1.734225,
+     1.699487,
+     1.533519,
+     1.659026,
+     1.267742
+    ],
+    "consistency_count": 3,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      0
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      4
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 256,
+   "rounds": 8,
+   "sim_seconds": 0.613,
+   "verdict": {
+    "error": "seed argmax consistency failed: 3/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.11389,
+     1.665527,
+     1.575901,
+     1.560788,
+     1.508084,
+     1.235889
+    ],
+    "consistency_count": 6,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 256,
+   "rounds": 8,
+   "sim_seconds": 0.642,
+   "verdict": {
+    "error": "seed argmax consistency failed: 6/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.152002,
+     1.623419,
+     1.584863,
+     1.620617,
+     1.623306,
+     1.273684
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 256,
+   "rounds": 8,
+   "sim_seconds": 0.596,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     2
+    ],
+    "aggregated_chi": [
+     1.081136,
+     1.637275,
+     1.696879,
+     1.632245,
+     1.587325,
+     1.280055
+    ],
+    "consistency_count": 5,
+    "per_seed_argmax_positions": [
+     [
+      2
+     ],
+     [
+      4
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "A",
+   "roots": 512,
+   "rounds": 8,
+   "sim_seconds": 1.214,
+   "verdict": {
+    "error": "seed argmax consistency failed: 5/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     1
+    ],
+    "aggregated_chi": [
+     1.061733,
+     1.631874,
+     1.630018,
+     1.601448,
+     1.572349,
+     1.267494
+    ],
+    "consistency_count": 3,
+    "per_seed_argmax_positions": [
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      3
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ]
+    ]
+   },
+   "panel": "B",
+   "roots": 512,
+   "rounds": 8,
+   "sim_seconds": 1.231,
+   "verdict": {
+    "error": "seed argmax consistency failed: 3/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  },
+  {
+   "diagnostics": {
+    "aggregated_argmax_positions": [
+     3
+    ],
+    "aggregated_chi": [
+     1.103092,
+     1.664677,
+     1.645784,
+     1.679832,
+     1.577542,
+     1.289958
+    ],
+    "consistency_count": 2,
+    "per_seed_argmax_positions": [
+     [
+      4
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      1
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ]
+    ]
+   },
+   "panel": "C",
+   "roots": 512,
+   "rounds": 8,
+   "sim_seconds": 1.216,
+   "verdict": {
+    "error": "seed argmax consistency failed: 2/12 seed positions peak at the aggregated argmax (fail-closed)",
+    "passed": false
+   }
+  }
+ ],
+ "predeclared": {
+  "holdout": [
+   747201,
+   747202,
+   747203,
+   747204,
+   747205,
+   747206,
+   747207,
+   747208,
+   747209,
+   747210,
+   747211,
+   747212
+  ],
+  "ladder_rounds_roots": [
+   [
+    4,
+    64
+   ],
+   [
+    4,
+    128
+   ],
+   [
+    4,
+    256
+   ],
+   [
+    4,
+    512
+   ],
+   [
+    6,
+    32
+   ],
+   [
+    6,
+    64
+   ],
+   [
+    6,
+    128
+   ],
+   [
+    6,
+    256
+   ],
+   [
+    6,
+    512
+   ],
+   [
+    8,
+    32
+   ],
+   [
+    8,
+    64
+   ],
+   [
+    8,
+    128
+   ],
+   [
+    8,
+    256
+   ],
+   [
+    8,
+    512
+   ]
+  ],
+  "opportunities_per_parent": 4,
+  "panels": {
+   "A": [
+    717201,
+    717202,
+    717203,
+    717204,
+    717205,
+    717206,
+    717207,
+    717208,
+    717209,
+    717210,
+    717211,
+    717212
+   ],
+   "B": [
+    727201,
+    727202,
+    727203,
+    727204,
+    727205,
+    727206,
+    727207,
+    727208,
+    727209,
+    727210,
+    727211,
+    727212
+   ],
+   "C": [
+    737201,
+    737202,
+    737203,
+    737204,
+    737205,
+    737206,
+    737207,
+    737208,
+    737209,
+    737210,
+    737211,
+    737212
+   ]
+  },
+  "selection_rule": "first ladder candidate passing panels A, B, C; holdout must then pass at that candidate; no adaptive retries"
+ },
+ "production_support_8x512_detail": {
+  "aggregated_argmax_by_panel": {
+   "A": 2,
+   "B": 1,
+   "C": 3
+  },
+  "aggregated_chi_by_panel": {
+   "A": [
+    1.081136,
+    1.637275,
+    1.696879,
+    1.632245,
+    1.587325,
+    1.280055
+   ],
+   "B": [
+    1.061733,
+    1.631874,
+    1.630018,
+    1.601448,
+    1.572349,
+    1.267494
+   ],
+   "C": [
+    1.103092,
+    1.664677,
+    1.645784,
+    1.679832,
+    1.577542,
+    1.289958
+   ]
+  },
+  "per_seed_argmax_distribution_36_seeds": {
+   "pos1_0.92": 13,
+   "pos2_0.97": 13,
+   "pos3_1.03": 7,
+   "pos4_1.08": 3
+  },
+  "reading": "interior cells 0.92-1.08 lie within ~4-7% in aggregated chi while per-seed argmaxes scatter over all four interior positions; the pooled (6144-tree) argmax itself moves across panels. Unanimity across 12 seeds is structurally unreachable at this flatness (order-of-magnitude P ~ 0.4^12 ~ 2e-5 even for the most-attracting cell)."
+ },
+ "protocol": "owner-authorized bounded diagnostic measurement, 2026-07-30 (nine-point protocol); implementation remains halted",
+ "repo_state": "unchanged per protocol item 1: the four untracked Task-0 files preserved byte-identical, no commits, no plan edits; only .superpowers/sdd/task-0-marker-measurement.{md,json} written (git-ignored scratch namespace).",
+ "selected": null,
+ "simulator": {
+  "judged_by": "REAL unmodified aggregate_marker_cell + locate_chi_peak; MARKER_SEEDS/MARKER_ROOT_COUNT/MARKER_ROUNDS module globals re-pointed per evaluation under try/finally (same mechanism as the signed-off Task-0 conftest); PLANT_R_GRID, 12-seed panel size, unanimity rule, boundary rule untouched",
+  "location": "/private/tmp/claude-503/-Users-zenith-Desktop-crowd-criticality/ebd3e2e9-16b9-4b92-b75b-166d310a65c4/scratchpad/marker_measure/marker_sim.py (temporary, /private/tmp)",
+  "replicates": "exact marker RNG/tree loop of _drive_recursive_marker_control: default_rng(SeedSequence(seed, spawn_key=(912, 921))); one float(rng.random()) per (parent, slot) in traversal order; sequential platform post ids; star-shaped root attribution; tree sizes in root-id order"
+ },
+ "started_utc": "2026-07-30T16:14:03Z",
+ "timings": {
+  "ceiling_seconds": 7200,
+  "crosscheck_real_seconds": 55.18,
+  "crosscheck_sim_seconds": 0.049,
+  "elapsed_at_sweep_end_seconds": 308.4,
+  "sweep_sim_seconds_total": 15.1
+ }
+}

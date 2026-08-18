@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import asdict
 import json
 import os
 import sqlite3
@@ -7,6 +8,25 @@ import numpy as np
 from critaudit.sim.harness.types import EventRecord, RefreshRecord
 from critaudit.sim.harness.assemble import assemble_harness_run
 from critaudit.sim.harness import harness_spec as hs
+from critaudit.sim.harness import causal_probe_spec as cspec
+from critaudit.sim.harness.causal_probe_records import (
+    FrameEligibilityEvidence,
+    Outcome,
+    PairEligibilityEvidence,
+    frame_eligibility_evidence_sha256,
+    frame_eligibility_evidence_to_bytes,
+    sampling_frame_sha256,
+    sampling_frame_to_bytes,
+)
+from critaudit.sim.harness.causal_probe_validation import (
+    validate_frame_provenance,
+    validate_outcomes,
+    validate_sampling_frame,
+)
+from critaudit.sim.harness.causal_refresh import (
+    CausalRefreshController,
+    apply_causal_refresh,
+)
 
 
 # The emit actions OASIS logs to `trace`, and the info key naming the content id each one CREATED.
@@ -101,10 +121,11 @@ def _event_seq(item_id, parent_item_id, seq_by_item):
     return 0
 
 
-def export_harness_run(db_path, *, timestamp_col):
-    """Read the OASIS post/comment/trace tables into the normalized HarnessRun. `timestamp_col` is the
-    confirmed time column ('created_at' per the Task-1 recon). The DB is opened READ-ONLY so a source
-    trace (e.g. the committed recon fixture) can never be mutated.
+def load_harness_records(db_path, *, timestamp_col):
+    """Read the OASIS post/comment/trace tables into the normalized (events, refreshes,
+    action_by_item) triple. `timestamp_col` is the confirmed time column ('created_at' per the
+    Task-1 recon). The DB is opened READ-ONLY so a source trace (e.g. the committed recon
+    fixture) can never be mutated.
 
     Two passes over the data:
       1. `trace` -> REFRESH records (seq = trace rowid) AND an item_id -> trace rowid map for every
@@ -113,7 +134,11 @@ def export_harness_run(db_path, *, timestamp_col):
          and emit-seq share the one counter the round-granular read->emit tiebreaker needs.
     Fail-closed throughout: `_served_post_ids`/`_emit_item_id` raise on info-shape drift, the strict
     seq-join raises on an un-traced emit-with-parent, and `assemble_harness_run`'s `build_parent_root`
-    raises on an unresolvable/duplicate/out-of-order parent (surfaced, not swallowed)."""
+    raises on an unresolvable/duplicate/out-of-order parent (surfaced, not swallowed).
+
+    Third element = action_by_item (item_id -> traced emit action), the same dict pass 1 builds
+    for the authored-content cross-check — exposed here so downstream consumers (Task 3) can reuse
+    it without re-parsing the trace table."""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         # Pass 1: trace -> refreshes + emit(item_id) -> rowid AND -> action (the authored-content
@@ -157,7 +182,261 @@ def export_harness_run(db_path, *, timestamp_col):
                                       seq=_event_seq(item_id, parent, seq_by_item)))
     finally:
         con.close()
+    return events, refreshes, action_by_item
+
+
+def export_harness_run(db_path, *, timestamp_col):
+    """Read the OASIS post/comment/trace tables into the normalized HarnessRun. `timestamp_col` is the
+    confirmed time column ('created_at' per the Task-1 recon). Delegates to load_harness_records for
+    the strict two-pass parse (signature/behavior unchanged) and discards the action_by_item map."""
+    events, refreshes, _ = load_harness_records(db_path, timestamp_col=timestamp_col)
     return assemble_harness_run(events, refreshes)
+
+
+# =============================================================================================
+# Causal probe (2026-07-22 plan Task 4) — fixed-frame eligibility evidence, the outcome join,
+# and the OPT-IN causal export surface. The default exporter above is untouched: nothing here
+# runs unless the causal hooks are supplied, and the hooks fail closed before any model work.
+# =============================================================================================
+
+# The dedicated news user's display name — the construction convention run_oasis_minimal signs
+# the manual news account up under; the evidence loader identifies the account from the DB row,
+# never from a spec constant.
+NEWS_AGENT_NAME = "news_source"
+
+
+def _causal_post_db_id(item_id):
+    """The integer post rowid behind a frame item ID under the 'post:<id>' convention."""
+    if not isinstance(item_id, str) or not item_id.startswith("post:"):
+        raise ValueError(
+            f"causal parent item id must use the post:<id> convention, got {item_id!r}")
+    try:
+        return int(item_id.split(":", 1)[1])
+    except ValueError:
+        raise ValueError(f"causal parent item id {item_id!r} has a non-integer post id")
+
+
+def _round_of(created_at):
+    """Round index from a round-granular created_at (stored as str(time_step) or a number)."""
+    return int(float(created_at))
+
+
+def read_trace_rows(db_path):
+    """Pre-draw trace snapshot (rowid order). FAIL-CLOSED on a missing database or table —
+    the causal path requires a pre-seeded trace, never an implicit empty one."""
+    if not os.path.exists(db_path):
+        raise ValueError(f"causal pre-draw database missing at {db_path!r} (fail-closed)")
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        rows = con.execute(
+            "SELECT user_id, created_at, action, info FROM trace ORDER BY rowid"
+        ).fetchall()
+    except sqlite3.Error as exc:
+        raise ValueError(f"cannot read pre-draw trace rows: {exc}")
+    finally:
+        con.close()
+    return tuple(rows)
+
+
+def load_frame_eligibility_evidence(frame, database_path, trace_rows):
+    """Measure the frozen pre-draw eligibility evidence for every candidate pair.
+
+    Everything is read from the actual DB/trace rows: parent author + creation round from the
+    post table, first readability = creation round + 1 (submit-in-round-r / readable-from-r+1),
+    prior exposure = refresh trace rows serving the parent to the recipient before the pair
+    round. COMPLETE same-action opportunity is MEASURED conservatively as: the recipient's
+    signed-up user row exists AND the parent is a ROOT post (`original_post_id IS NULL`). A
+    root parent is the case for which all three registered same-actions land natively on the
+    parent itself: a comment records `post_id = parent`, and the installed platform's
+    `quote_post`/`repost` on a `common` (root) post record `original_post_id = parent`
+    (platform.py; `_get_post_type` classifies the source, then the `common` branch keeps the
+    source id). For a DERIVED (non-root) parent this no longer holds for all three actions,
+    and the exact resolution is action- and type-specific — e.g. `quote_post` of a
+    `quote`/`repost` source resolves to its `root_post_id`, and `repost` of a `repost`
+    resolves to root, so a native quote/repost is not recorded against the parent; whereas
+    `repost` of a `quote` KEEPS the quote as `original_post_id`. Because at least one native
+    same-action is lost for any derived parent, requiring a root parent is the conservative
+    sufficient condition under which the complete opportunity is known to hold — NOT a claim
+    that every derived same-action redirects to root. The dedicated news user is identified by
+    its DB row, and `validate_frame_provenance` enforces its exclusion."""
+    validate_sampling_frame(frame)
+    con = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+    try:
+        news_rows = con.execute(
+            "SELECT agent_id FROM user WHERE name = ?", (NEWS_AGENT_NAME,)
+        ).fetchall()
+        if len(news_rows) != 1:
+            raise ValueError(
+                f"expected exactly one dedicated news user row named "
+                f"{NEWS_AGENT_NAME!r}, found {len(news_rows)} (fail-closed)")
+        news_user_agent_id = int(news_rows[0][0])
+
+        served = []
+        for user_id, created_at, action, info in trace_rows:
+            if action == "refresh":
+                served.append((
+                    int(user_id),
+                    _round_of(created_at),
+                    {int(post_id) for post_id in _served_post_ids(info)},
+                ))
+
+        pair_rows = []
+        for pair in frame.candidate_pairs:
+            parent_db_id = _causal_post_db_id(pair.parent_item_id)
+            row = con.execute(
+                "SELECT user_id, created_at, original_post_id FROM post "
+                "WHERE post_id = ?",
+                (parent_db_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(
+                    f"registered parent {pair.parent_item_id!r} has no post row "
+                    f"(fail-closed)")
+            author_agent_id = int(row[0])
+            created_round = _round_of(row[1])
+            parent_is_root = row[2] is None
+            prior_exposure = sum(
+                1 for agent, round_id, ids in served
+                if agent == pair.agent_id and round_id < pair.round_id
+                and parent_db_id in ids)
+            recipient_row = con.execute(
+                "SELECT 1 FROM user WHERE agent_id = ?", (pair.agent_id,)
+            ).fetchone()
+            pair_rows.append(PairEligibilityEvidence(
+                pair_id=pair.pair_id,
+                parent_author_agent_id=author_agent_id,
+                parent_created_round=created_round,
+                first_readable_round=created_round + 1,
+                prior_exposure_count=prior_exposure,
+                complete_same_action_opportunity=(
+                    recipient_row is not None and parent_is_root),
+            ))
+    finally:
+        con.close()
+    return FrameEligibilityEvidence(
+        frame_id=frame.frame_id,
+        news_user_agent_id=news_user_agent_id,
+        pair_evidence=tuple(pair_rows),
+    )
+
+
+def collect_causal_outcomes(controller, db_path):
+    """Join exactly one fail-closed outcome onto every assignment.
+
+    A response is a same-action comment/quote/repost whose NATIVE parent equals the
+    frame-registered experimental parent and whose author equals the assigned agent in the
+    frozen outcome round — never inferred through authored text. No-response outcomes are
+    explicit; multiple native children fail closed; the complete joined ledger is validated
+    before it is returned."""
+    frame = controller.frame
+    pairs = {pair.pair_id: pair for pair in frame.candidate_pairs}
+    services = {service.assignment_id: service for service in controller.services}
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    outcomes = []
+    try:
+        for assignment in controller.assignments:
+            pair = pairs[assignment.pair_id]
+            service = services[assignment.assignment_id]
+            parent_db_id = _causal_post_db_id(pair.parent_item_id)
+            outcome_round = pair.round_id + cspec.OUTCOME_LAG_ROUNDS
+            children = []
+            for (comment_id,) in con.execute(
+                "SELECT comment_id FROM comment WHERE post_id = ? AND user_id = ? "
+                "AND CAST(created_at AS INTEGER) = ?",
+                (parent_db_id, pair.agent_id, outcome_round),
+            ):
+                children.append(f"comment:{int(comment_id)}")
+            for (post_id,) in con.execute(
+                "SELECT post_id FROM post WHERE original_post_id = ? AND user_id = ? "
+                "AND CAST(created_at AS INTEGER) = ?",
+                (parent_db_id, pair.agent_id, outcome_round),
+            ):
+                children.append(f"post:{int(post_id)}")
+            if len(children) > 1:
+                raise ValueError(
+                    f"assignment {assignment.assignment_id!r} has multiple same-action "
+                    f"native children (fail-closed): {children!r}")
+            if children:
+                outcome = Outcome(
+                    assignment_id=assignment.assignment_id,
+                    parent_served=service.parent_served,
+                    parent_seen_in_background=service.parent_seen_in_background,
+                    feed_length_before=service.feed_length_before,
+                    feed_length_after=service.feed_length_after,
+                    direct_child_item_id=children[0],
+                    direct_child_parent_id=pair.parent_item_id,
+                    child_author_agent_id=pair.agent_id,
+                    child_round=outcome_round,
+                )
+            else:
+                outcome = Outcome(
+                    assignment_id=assignment.assignment_id,
+                    parent_served=service.parent_served,
+                    parent_seen_in_background=service.parent_seen_in_background,
+                    feed_length_before=service.feed_length_before,
+                    feed_length_after=service.feed_length_after,
+                    direct_child_item_id=None,
+                    direct_child_parent_id=None,
+                    child_author_agent_id=None,
+                    child_round=None,
+                )
+            outcomes.append(outcome)
+    finally:
+        con.close()
+    outcomes = tuple(outcomes)
+    validate_outcomes(frame, controller.draws, controller.assignments, outcomes)
+    return outcomes
+
+
+def persist_frame_artifacts(directory, frame):
+    """Write the canonical frame bytes and SHA-256 (the before-first-draw freeze artifact)."""
+    os.makedirs(directory, exist_ok=True)
+    frame_path = os.path.join(directory, "causal_frame.json")
+    with open(frame_path, "wb") as handle:
+        handle.write(sampling_frame_to_bytes(frame))
+    sha_path = os.path.join(directory, "causal_frame.sha256")
+    with open(sha_path, "w") as handle:
+        handle.write(sampling_frame_sha256(frame) + "\n")
+    return frame_path, sha_path
+
+
+def persist_evidence_artifacts(directory, evidence):
+    """Write the canonical eligibility-evidence bytes and SHA-256."""
+    os.makedirs(directory, exist_ok=True)
+    evidence_path = os.path.join(directory, "eligibility_evidence.json")
+    with open(evidence_path, "wb") as handle:
+        handle.write(frame_eligibility_evidence_to_bytes(evidence))
+    sha_path = os.path.join(directory, "eligibility_evidence.sha256")
+    with open(sha_path, "w") as handle:
+        handle.write(frame_eligibility_evidence_sha256(evidence) + "\n")
+    return evidence_path, sha_path
+
+
+def export_causal_run(directory, *, controller, evidence, db_path):
+    """OPT-IN causal export surface: frame + evidence artifacts and the complete causal
+    ledgers. The default exporter (export_harness_run) schema and bytes are untouched."""
+    # Mandatory run-boundary frame-integrity check before producing any artifact
+    # (frame-integrity amendment): the controller's private operational snapshot
+    # must still match its construction-time canonical bytes.
+    controller.assert_run_frame_intact()
+    persist_frame_artifacts(directory, controller.frame)
+    persist_evidence_artifacts(directory, evidence)
+    validate_frame_provenance(controller.frame, evidence)
+    outcomes = collect_causal_outcomes(controller, db_path)
+    ledgers = {
+        "schema_version": cspec.SCHEMA_VERSION,
+        "frame_sha256": controller.frame_sha256,
+        "draws": [asdict(draw) for draw in controller.draws],
+        "assignments": [asdict(assignment) for assignment in controller.assignments],
+        "services": [asdict(service) for service in controller.services],
+        "outcomes": [asdict(outcome) for outcome in outcomes],
+    }
+    ledger_path = os.path.join(directory, "causal_ledgers.json")
+    with open(ledger_path, "w") as handle:
+        json.dump(ledgers, handle, allow_nan=False, ensure_ascii=False,
+                  separators=(",", ":"), sort_keys=True)
+        handle.write("\n")
+    return ledger_path
 
 
 # =============================================================================================
@@ -255,16 +534,18 @@ def build_news_schedule(seed, *, n_rounds, news_rate, pool=None):
     return out
 
 
-def _run_db_path(seed):
+def _run_db_path(seed, keep_existing=False):
     """Unique per-(seed) run directory for the trace sqlite (a run ARTIFACT, never committed). Base
     is HARNESS_COHORT_DIR if set (the controller points it at the session scratchpad), else a stable
-    subdir of the system temp. The db file is removed if stale so each run starts clean."""
+    subdir of the system temp. The db file is removed if stale so each run starts clean —
+    EXCEPT on the causal path (keep_existing=True), which requires the pre-seeded pre-draw
+    database and must never silently start from an empty one."""
     base = os.environ.get("HARNESS_COHORT_DIR") or os.path.join(
         tempfile.gettempdir(), "critaudit_cohort")
     run_dir = os.path.join(base, f"seed_{seed}")
     os.makedirs(run_dir, exist_ok=True)
     db_path = os.path.join(run_dir, "oasis.db")
-    if os.path.exists(db_path):
+    if os.path.exists(db_path) and not keep_existing:
         os.remove(db_path)
     return db_path
 
@@ -432,10 +713,13 @@ def _new_user_info(*, name, bio, user_profile):
     )
 
 
-async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_path, edges, schedule):
+async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_path, edges, schedule,
+                                   causal_controller=None):
     """The awaited OASIS wiring (freeze report §4 ordered recipe). `model` is the crowd's counting
     backend; `news_model` is the news user's fail-closed sentinel; `edges`/`schedule` are the
-    pure-builder outputs. Fail-closed: a failed follow insert raises (no silent partial graph)."""
+    pure-builder outputs. Fail-closed: a failed follow insert raises (no silent partial graph).
+    `causal_controller` (Task 4): when present, the platform wrapper realizes the fixed-frame
+    refresh intervention via apply_causal_refresh; None leaves the original Platform untouched."""
     from oasis import (ActionType, AgentGraph, LLMAction, ManualAction, Platform,
                        SocialAgent, make)
     from oasis.social_platform.channel import Channel
@@ -468,7 +752,7 @@ async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_pat
     # excluded-from-n_agents); token counts are unaffected (the sentinel can never be invoked).
     graph.add_agent(SocialAgent(
         agent_id=news_id,
-        user_info=_new_user_info(name="news_source", bio=_NEWS_BIO,
+        user_info=_new_user_info(name=NEWS_AGENT_NAME, bio=_NEWS_BIO,
                                  user_profile=_NEWS_USER_PROFILE),
         model=news_model, available_actions=available))
 
@@ -477,7 +761,21 @@ async def _run_oasis_minimal_async(*, operating_point, model, news_model, db_pat
     #    recsys_type explicitly is REQUIRED (Platform default is "reddit", platform.py:64).
     #    following_post_count is passed EXPLICITLY (registered constant, sub-inc-2 T3) so the frozen
     #    value binds, never the installed library's default.
-    platform = Platform(
+    if causal_controller is None:
+        platform_cls = Platform
+    else:
+        controller = causal_controller
+
+        class _CausalPlatform(Platform):
+            """Delegates ordinary refresh construction to Platform and applies the
+            fixed-frame controller before posts reach prompt conversion (Task 4)."""
+
+            async def refresh(self, agent_id):
+                return await apply_causal_refresh(
+                    super().refresh, self, controller, agent_id)
+
+        platform_cls = _CausalPlatform
+    platform = platform_cls(
         db_path=db_path,
         channel=Channel(),
         recsys_type=RecsysType(hs.RECSYS_TYPE),
@@ -551,7 +849,8 @@ def resolve_schedule(seed, operating_point, schedule):
     return schedule
 
 
-def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token, *, schedule=None):
+def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token, *, schedule=None,
+                      causal_frame=None, causal_controller=None):
     """OASIS-config integration (plan Task 10): build the frozen crowd at `operating_point`, run it
     through the OpenAI-compatible `endpoint_url` model `model_id`, and return
     (db_path, token_counts). All construction is dictated by the FROZEN rules in harness_spec +
@@ -560,10 +859,45 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token, *, s
     {"prompt","completion","total","n_calls"} values plus a copied per-call ``usage_log`` and
     the server ``rejections`` count from the driver-side accounting backend. The trace sqlite at
     db_path is a run artifact (never committed); export_harness_run(db_path,
-    timestamp_col="created_at") reads it downstream."""
+    timestamp_col="created_at") reads it downstream.
+
+    Causal hooks (Task 4, both-or-neither, defaults inert): `causal_frame` is the immutable
+    pre-serialized SamplingFrame and `causal_controller` the CausalRefreshController built from
+    the byte-identical frame — no dynamic candidate callbacks or frame replacement is accepted,
+    and the controller itself re-hashes the frame on every draw. The causal path requires a
+    pre-seeded pre-draw database at the run path: the frame is persisted before the first
+    refresh draw, eligibility evidence is measured and validated pre-draw, and its canonical
+    bytes/SHA-256 are persisted before the platform wrapper instantiates. The registered news
+    schedule, recsys type, coupling knob, following count, model wrapper, and default exporter
+    schema are untouched on both paths."""
     import asyncio
 
-    db_path = _run_db_path(seed)
+    if (causal_frame is None) != (causal_controller is None):
+        raise ValueError(
+            "causal_frame and causal_controller must be supplied together (fail-closed)")
+    causal = causal_controller is not None
+    evidence = None
+    if causal:
+        if not isinstance(causal_controller, CausalRefreshController):
+            raise ValueError(
+                "causal_controller must be a CausalRefreshController — dynamic candidate "
+                "callbacks and frame replacement are rejected (fail-closed)")
+        validate_sampling_frame(causal_frame)
+        if (sampling_frame_to_bytes(causal_controller.frame)
+                != sampling_frame_to_bytes(causal_frame)
+                or causal_controller.frame_sha256 != sampling_frame_sha256(causal_frame)):
+            raise ValueError(
+                "causal_controller was not constructed from the byte-identical fixed "
+                "frame (fail-closed)")
+
+    db_path = _run_db_path(seed, keep_existing=causal)
+    if causal:
+        run_dir = os.path.dirname(db_path)
+        persist_frame_artifacts(run_dir, causal_frame)   # before the first refresh draw
+        trace_rows = read_trace_rows(db_path)            # pre-draw snapshot (fail-closed)
+        evidence = load_frame_eligibility_evidence(causal_frame, db_path, trace_rows)
+        validate_frame_provenance(causal_frame, evidence)
+        persist_evidence_artifacts(run_dir, evidence)    # before the platform wrapper
     model = _make_counting_model(
         model_id=model_id, endpoint_url=endpoint_url, token=token,
         max_tokens=hs.COHORT_MAX_TOKENS, temperature=TEMPERATURE, timeout=CLIENT_TIMEOUT_S,
@@ -579,7 +913,11 @@ def run_oasis_minimal(seed, operating_point, model_id, endpoint_url, token, *, s
 
     asyncio.run(_run_oasis_minimal_async(
         operating_point=operating_point, model=model, news_model=news_model, db_path=db_path,
-        edges=edges, schedule=schedule))
+        edges=edges, schedule=schedule, causal_controller=causal_controller))
+
+    if causal:
+        export_causal_run(os.path.dirname(db_path), controller=causal_controller,
+                          evidence=evidence, db_path=db_path)
 
     token_counts = dict(model.usage_counts)
     token_counts.update(
