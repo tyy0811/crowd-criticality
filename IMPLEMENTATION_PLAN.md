@@ -8,9 +8,25 @@
 
 > **Agent orientation.** The protocol lives in two files by design: this plan (living, editable) and `PRE_REGISTRATION.md` (the historical v0.3 global draft). Load both files for any task on this repo. The intended global freeze never occurred: the freeze date and OSF registration were never completed. Do not treat the draft as retroactive coverage for Stage 1 or Stage 2 results. Locally prospective specifications and committed freeze-before-measure spines retain only their documented local scope.
 
-## 2026-07-22 reconciliation checkpoint (current authority)
+## 2026-08-18 reconciliation checkpoint (current authority)
 
-This checkpoint reconciles the roadmap with the repository after Stage 2 sub-increment 3. It changes status and authorization, not a scientific threshold, hypothesis, or banked artifact. The original v0.3 stages remain below as historical intent; this section controls current execution where they conflict.
+This checkpoint supersedes the 2026-07-22 checkpoint below as current authority; that section is retained as the historical record it documents (its per-stage table and "Ratification outcome" / "Sampling-frame amendment" paragraphs are unchanged and still govern their own scope). It changes status and authorization, not a scientific threshold, hypothesis, or banked artifact.
+
+### What changed since 2026-07-22
+
+- **Branch B activated ([DECISIONS.md](DECISIONS.md), 2026-07-30).** The marker χ-coincidence diagnostic measured the registered causal-probe recoverability gate as structurally unsatisfiable (42/42 support×panel evaluations failed 12/12 seed unanimity; best anywhere 7/12; root cause is the instrument's population geometry, not a sampling accident). Per the design's own fail conditions this activates `causal_probe_spec.BRANCH_B_TEXT` verbatim: no recoverable OASIS regime-placement instrument is available; the classical locator and OASIS accessibility findings retain their earned scope; future OASIS analysis is restricted to observable knob-space and null confirmation, without `n` placement or H1b. The 2026-07-22 section below still describes Branch B as a contingent fallback ("remains the mechanical fail branch" if certain gates fail) — those gates have since failed, and the contingency has resolved to Branch B.
+- **Parrot-null v2 measurement closed as R3 ([PRE_REGISTRATION.md §11](PRE_REGISTRATION.md), [DECISIONS.md](DECISIONS.md) 2026-08-17/18).** Under the activated Branch B scope, the prospectively registered 45-run paired structural-invariance measurement executed from `52cbbd9` and fail-stopped on run 1/45: a registered schedule–substrate incompatibility (the uniform refresh-agent allocation collided with OASIS's round-granular clock and trace-uniqueness constraint). Reading **R3** (rig finding); **no R1 or R2 is creditable**. The measurement is closed per its own registration; any successor requires a dated §11 amendment and its own explicit authorization.
+- **PR #13 merged (2026-08-18).** The causal-probe instrument, the Branch-B activation record, and the parrot-null v2 measurement record are squashed into `main` at `989f8b9`. CI passed Python 3.9–3.12.
+
+### What is unchanged
+
+The original three-way Stage 2 sweep is still not authorized. Stage 3 remains closed. No paid or GPU-backed measurement is authorized by this checkpoint. Any parrot-null successor or new OASIS regime-instrument attempt requires a prospective amendment and separate owner authorization.
+
+---
+
+## 2026-07-22 reconciliation checkpoint (superseded — historical)
+
+This checkpoint reconciles the roadmap with the repository after Stage 2 sub-increment 3. It changes status and authorization, not a scientific threshold, hypothesis, or banked artifact. The original v0.3 stages remain below as historical intent; this section controlled execution at the time and is retained verbatim for its per-stage table and ratification record — the 2026-08-18 checkpoint above is current authority where they conflict.
 
 ### Governance status
 
@@ -56,7 +72,7 @@ The design comparison does not presume Branch A will work. Any measurement autho
 
 ---
 
-> **Historical-status note.** Sections 0–7 below preserve the original v0.3 roadmap and scientific intent. Within those sections, words such as “frozen” and “pre-registered” describe the state the roadmap required, not evidence that the unfinished global draft attained that state. The reconciliation checkpoint above governs current status and authorization.
+> **Historical-status note.** Sections 0–7 below preserve the original v0.3 roadmap and scientific intent. Within those sections, words such as “frozen” and “pre-registered” describe the state the roadmap required, not evidence that the unfinished global draft attained that state. The 2026-08-18 reconciliation checkpoint above governs current status and authorization.
 
 ## 0. Thesis and contract (read this first)
 
