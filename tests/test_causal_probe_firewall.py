@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from conftest import names_and_imports as _names_and_imports_impl
 from critaudit.sim.controls.causal_probe_marker_control import (
     MARKER_ROUND_OFFSET,
     MARKER_SEED_STREAM,
@@ -72,20 +73,7 @@ _FORBIDDEN_NAMES = {"n_resp", "fit_powerlaw", "attribute_similarity_parents"}
 
 
 def _names_and_imports(path):
-    with open(os.path.join(_REPO, path)) as handle:
-        tree = ast.parse(handle.read(), filename=path)
-    imports, names = set(), set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imports.add(node.module or "")
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.Name):
-            names.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-    return imports, names
+    return _names_and_imports_impl(_REPO, path)
 
 
 def _causal_scan_targets():
