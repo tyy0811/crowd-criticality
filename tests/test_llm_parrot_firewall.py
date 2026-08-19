@@ -12,6 +12,7 @@ import json
 import os
 import re
 
+from conftest import names_and_imports as _names_and_imports_impl
 from critaudit.sim.controls import llm_parrot_spec as lps
 from critaudit.sim.harness.cohort_marginals import COHORT_MARGINALS_FIELDS
 
@@ -82,20 +83,7 @@ _EMBARGOED_CONSTANTS = {"NULL_TAU_FRAC_MAX", "N_EMIT_DEFINITION"}
 
 
 def _names_and_imports(path):
-    tree = ast.parse(open(os.path.join(_REPO, path)).read(), filename=path)
-    imports, names = set(), set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.update(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            mod = node.module or ""
-            imports.add(mod)
-            names.update(a.name for a in node.names)
-        elif isinstance(node, ast.Name):
-            names.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-    return imports, names
+    return _names_and_imports_impl(_REPO, path)
 
 
 def test_no_fitting_stack_import_or_tau_arm_reference():

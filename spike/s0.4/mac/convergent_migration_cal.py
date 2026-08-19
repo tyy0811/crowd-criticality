@@ -33,6 +33,7 @@ USAGE:
   python convergent_migration_cal.py --smoke       # 1 regime x 1 seed, reduced grid: plumbing + timing
   python convergent_migration_cal.py               # full: Phase A (freeze) then Phase B (verdict)
 """
+import argparse
 import pathlib
 import sys
 import time
@@ -43,6 +44,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from b_reader import read_markets
+from critaudit.generators.powerlaw_hawkes import simulate_ramp as _simulate_ramp_canonical
 from critaudit.hawkes.binned import PowerLawKernel
 from mu_t_hawkes import segment_edges_by_count
 
@@ -152,18 +154,7 @@ def run_gate(times, horizon, K=K_FLEX):
 def simulate_ramp(mu0, ramp, n, T, eps, c, rng):
     """Lomax-kernel Hawkes with a LINEAR-ramp immigration mu(t)=mu0*(1 + ramp*t/T). REALIZED rate swing
     = mu(T)/mu(0) = 1 + ramp (so to hit a measured swing S, pass ramp = S - 1; see #6)."""
-    mu_max = mu0 * (1.0 + max(ramp, 0.0))
-    cand = rng.uniform(0, T, rng.poisson(mu_max * T))
-    imm = cand[rng.uniform(0, 1, cand.size) < (mu0 * (1.0 + ramp * cand / T)) / mu_max]
-    times, queue = list(imm), list(imm)
-    while queue:
-        p = queue.pop()
-        kk = rng.poisson(n)
-        if kk:
-            for ct in p + c * ((1.0 - rng.uniform(0, 1, kk)) ** (-1.0 / eps) - 1.0):
-                if ct < T:
-                    times.append(ct); queue.append(ct)
-    return np.sort(np.asarray(times, float))
+    return _simulate_ramp_canonical(n, T, mu0, eps, c, ramp, rng)
 
 
 def rate_swing(times, horizon, k_rate=8):
@@ -665,27 +656,33 @@ def phase_nprobe(_regimes=None):
 
 
 if __name__ == "__main__":
-    if "--verify" in sys.argv:
-        verify()
-    elif "--smoke" in sys.argv:
-        verify(); smoke()
-    elif "--magnitude" in sys.argv:
-        verify()
+    _parser = argparse.ArgumentParser()
+    _mode = _parser.add_mutually_exclusive_group()
+    _mode.add_argument("--verify", action="store_true", help="golden: cached profile == fit_mu_only")
+    _mode.add_argument("--smoke", action="store_true", help="1 regime x 1 seed, reduced grid: plumbing + timing")
+    _mode.add_argument("--magnitude", action="store_true")
+    _mode.add_argument("--finegrid", action="store_true")
+    _mode.add_argument("--nprobe", action="store_true")
+    _mode.add_argument("--tight", action="store_true")
+    args = _parser.parse_args()
+
+    verify()                                       # never run a result on an unverified estimator, in every mode
+    if args.verify:
+        pass
+    elif args.smoke:
+        smoke()
+    elif args.magnitude:
         phase_magnitude(over_floor_markets())
-    elif "--finegrid" in sys.argv:
-        verify()
+    elif args.finegrid:
         phase_finegrid(over_floor_markets())
-    elif "--nprobe" in sys.argv:
-        verify()
+    elif args.nprobe:
         phase_nprobe()
-    elif "--tight" in sys.argv:
-        verify()                                   # never run a result on an unverified estimator
+    elif args.tight:
         regimes = over_floor_markets()
         log(f"TIGHTENED re-run: {len(regimes)} regimes x {len(PLANT_LEVELS)} plant levels x {SEEDS_TIGHT} seeds")
         phase_a_tight(regimes)
         phase_b(regimes, {r["tag"]: float("nan") for r in regimes})   # real markets, unchanged gate
     else:
-        verify()                                   # never run a result on an unverified estimator
         regimes = over_floor_markets()
         log(f"{len(regimes)} over-floor regimes: "
             + ", ".join(f"{r['tag']}(N={r['N']},swing={r['swing']:.1f}x)" for r in regimes))

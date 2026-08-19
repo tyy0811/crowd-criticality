@@ -4,10 +4,11 @@ set, R8) nor any fitting stack, and reference no retired §9 / τ-arm symbol. Th
 legitimately reads seeded SIZES and SUCCESSES from its own ABM runs — nothing else; §9a/§9b are
 retired-as-blocked, so no sub-inc-3 module may compute τ on anything. Banked results/s3_probe
 JSONs carry no embargoed key. Scanner power-checked against a known violator."""
-import ast
 import json
 import os
 import re
+
+from conftest import names_and_imports as _names_and_imports_impl
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -26,19 +27,7 @@ _FORBIDDEN_NAMES = {"read_tau_arm", "fit_powerlaw", "certify_near_critical", "ex
 
 
 def _names_and_imports(path):
-    tree = ast.parse(open(os.path.join(_REPO, path)).read(), filename=path)
-    imports, names = set(), set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.update(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imports.add(node.module or "")
-            names.update(a.name for a in node.names)
-        elif isinstance(node, ast.Name):
-            names.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-    return imports, names
+    return _names_and_imports_impl(_REPO, path)
 
 
 def _scan_targets():

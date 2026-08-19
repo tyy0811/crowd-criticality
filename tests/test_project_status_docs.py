@@ -13,8 +13,33 @@ def _read(relative_path: str) -> str:
 def test_readme_names_the_current_reconciliation_checkpoint():
     readme = _read("README.md")
 
-    assert "Current checkpoint (2026-07-22)" in readme
-    assert "Stage 2 sub-increment 3" in readme
+    assert "Current checkpoint (2026-08-18)" in readme
+    assert "Branch-B activation" in readme
+    assert "parrot-null v2 R3 measurement" in readme
+
+
+def test_plan_names_the_2026_08_18_checkpoint_as_current_authority():
+    plan = _read("IMPLEMENTATION_PLAN.md")
+
+    assert "## 2026-08-18 reconciliation checkpoint (current authority)" in plan
+    assert "## 2026-07-22 reconciliation checkpoint (superseded — historical)" in plan
+    # exactly one "(current authority)" checkpoint heading — a stale second one means drift
+    assert plan.count("reconciliation checkpoint (current authority)") == 1
+
+
+def test_plan_records_branch_b_activation_and_the_r3_closeout():
+    plan = _read("IMPLEMENTATION_PLAN.md")
+    decisions = _read("DECISIONS.md")
+    preregistration = _read("PRE_REGISTRATION.md")
+
+    assert "Branch B activated" in plan
+    assert "BRANCH B ACTIVATED" in decisions
+    assert "no recoverable OASIS regime-placement instrument is available" in plan
+
+    assert "closed as R3" in plan
+    assert "no R1 or R2 is creditable" in plan
+    assert "R3" in preregistration and "No R1 or R2 is creditable" in preregistration
+    assert "52cbbd9" in plan
 
 
 def test_living_plan_records_each_reconciled_stage_state():

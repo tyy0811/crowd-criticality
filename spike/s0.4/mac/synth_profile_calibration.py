@@ -19,6 +19,7 @@ import time
 SPIKE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SPIKE))
 import numpy as np
+from critaudit.generators.powerlaw_hawkes import simulate_ramp as _simulate_ramp_canonical
 from critaudit.hawkes.binned import PowerLawKernel
 from mu_t_hawkes import fit_mu_only
 
@@ -33,18 +34,7 @@ REGIMES = [("A short-mem+mild ramp (separated -> expect peak~0.5)", 1.6, 0.5, 2.
 
 
 def simulate_ramp(mu0, ramp, n, T, eps, c, rng):
-    mu_max = mu0 * (1.0 + max(ramp, 0.0))
-    cand = rng.uniform(0, T, rng.poisson(mu_max * T))
-    imm = cand[rng.uniform(0, 1, cand.size) < (mu0 * (1.0 + ramp * cand / T)) / mu_max]
-    times, queue = list(imm), list(imm)
-    while queue:
-        p = queue.pop()
-        kk = rng.poisson(n)
-        if kk:
-            for ct in p + c * ((1.0 - rng.uniform(0, 1, kk)) ** (-1.0 / eps) - 1.0):
-                if ct < T:
-                    times.append(ct); queue.append(ct)
-    return np.sort(np.asarray(times, float))
+    return _simulate_ramp_canonical(n, T, mu0, eps, c, ramp, rng)
 
 
 def log(m):
