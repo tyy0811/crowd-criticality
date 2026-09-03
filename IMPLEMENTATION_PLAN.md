@@ -8,7 +8,28 @@
 
 > **Agent orientation.** The protocol lives in two files by design: this plan (living, editable) and `PRE_REGISTRATION.md` (the historical v0.3 global draft). Load both files for any task on this repo. The intended global freeze never occurred: the freeze date and OSF registration were never completed. Do not treat the draft as retroactive coverage for Stage 1 or Stage 2 results. Locally prospective specifications and committed freeze-before-measure spines retain only their documented local scope.
 
-## 2026-08-18 reconciliation checkpoint (current authority)
+## 2026-08-28 activity-workstream checkpoint (current authority)
+
+This checkpoint supersedes the 2026-08-18 reconciliation checkpoint below without changing any banked result. The boundary was drafted 2026-08-28 and is tracked 2026-09-03 before any provider-backed v0.2 measurement. It governs the **v0.2 activity-screening workstream only**.
+
+### Authorized now
+
+Only the Task 1 prospective boundary, status documentation, and firewall tests are authorized by this commit. They make no network request, spend no money, open no locked label, and perform no service action. The frozen target is the incremental predictive value of cutoff-safe social information for next-24-hour Polymarket activity bursts; [`docs/V0_2_ACTIVITY_BACKTEST.md`](docs/V0_2_ACTIVITY_BACKTEST.md) is the controlling boundary.
+
+### Defined but not execution-authorized
+
+The admissible later scope is limited to specification/fixtures, public Polymarket and Bluesky validity measurements, a paid-Gemini retrospective screen capped at USD 5 within the USD 20 total ceiling, and a separate roster-aware recorder. Each applicable gate must be reviewed before it runs, and service deployment, paid calls, and locked-label access each require fresh explicit owner authorization. No MiroFish-style simulation is authorized.
+
+### Boundaries retained
+
+- **Branch B remains activated.** This activity screen does not restore a recoverable OASIS regime-placement instrument.
+- **The original three-way Stage 2 sweep remains unauthorized. Stage 3 remains closed.**
+- The work earns **no criticality, H1b, or OASIS regime-placement credit**. A retrospective result is a screen; forward shadow replication is the adjudicating test.
+- **Recorder protection:** com.crowdcriticality.brecorder must not be stopped, modified, or replaced by this workstream. Its continuing 1.0 GB capture is now an explicit unresolved operational decision and must be addressed separately before any parallel recorder is authorized.
+
+---
+
+## 2026-08-18 reconciliation checkpoint (superseded — historical)
 
 This checkpoint supersedes the 2026-07-22 checkpoint below as current authority; that section is retained as the historical record it documents (its per-stage table and "Ratification outcome" / "Sampling-frame amendment" paragraphs are unchanged and still govern their own scope). It changes status and authorization, not a scientific threshold, hypothesis, or banked artifact.
 
