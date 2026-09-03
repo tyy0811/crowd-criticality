@@ -10,21 +10,34 @@ def _read(relative_path: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_readme_names_the_current_reconciliation_checkpoint():
+def test_readme_names_and_links_the_current_activity_checkpoint():
     readme = _read("README.md")
 
-    assert "Current checkpoint (2026-08-18)" in readme
+    assert "Current checkpoint (2026-08-28)" in readme
     assert "Branch-B activation" in readme
     assert "parrot-null v2 R3 measurement" in readme
+    assert "IMPLEMENTATION_PLAN.md#2026-08-28-activity-workstream-checkpoint-current-authority" in readme
+    assert "docs/V0_2_ACTIVITY_BACKTEST.md" in readme
 
 
-def test_plan_names_the_2026_08_18_checkpoint_as_current_authority():
+def test_plan_names_the_2026_08_28_checkpoint_as_current_authority():
     plan = _read("IMPLEMENTATION_PLAN.md")
 
-    assert "## 2026-08-18 reconciliation checkpoint (current authority)" in plan
+    assert "## 2026-08-28 activity-workstream checkpoint (current authority)" in plan
+    assert "## 2026-08-18 reconciliation checkpoint (superseded — historical)" in plan
     assert "## 2026-07-22 reconciliation checkpoint (superseded — historical)" in plan
     # exactly one "(current authority)" checkpoint heading — a stale second one means drift
-    assert plan.count("reconciliation checkpoint (current authority)") == 1
+    assert plan.count("(current authority)") == 1
+
+
+def test_activity_checkpoint_does_not_reopen_closed_science():
+    plan = _read("IMPLEMENTATION_PLAN.md")
+    assert "v0.2 activity-screening workstream only" in plan
+    assert "Branch B remains activated" in plan
+    assert "The original three-way Stage 2 sweep remains unauthorized" in plan
+    assert "Stage 3 remains closed" in plan
+    assert "no criticality, H1b, or OASIS regime-placement credit" in plan
+    assert "com.crowdcriticality.brecorder must not be stopped, modified, or replaced" in plan
 
 
 def test_plan_records_branch_b_activation_and_the_r3_closeout():
